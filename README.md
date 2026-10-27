@@ -8,8 +8,14 @@ want to go and it marks the closest exit.
 Runs on GitHub Pages. The only live request is departures, which go through a
 small Cloudflare Worker (see below for why).
 
+It's a PWA: on iPhone, Safari → Share → "Zum Home-Bildschirm" installs it with
+its own icon, full-screen. Station maps and exits also work offline; only
+departures need network.
+
 ```
 index.html            the app (vanilla JS + Leaflet from cdnjs)
+manifest.webmanifest  PWA manifest; icons/ from scripts/make-icons.py (Pillow)
+sw.js                 service worker: offline app shell (bump CACHE on big changes)
 data.js               baked station data (generated, ~330 KB, ~80 KB gzipped)
 scripts/build-data.py regenerates data.js from open data
 worker/worker.js      Cloudflare Worker: CORS relay for the realtime API
