@@ -1,0 +1,8 @@
+name = "wien-ausgang"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+# Restrict who may call the worker (optional). Set it to your GitHub Pages
+# origin once the page is live, e.g. "https://name.github.io".
+# [vars]
+# ALLOWED_ORIGINS = "https://name.github.io"

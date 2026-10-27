@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Öffi Ausgang</title>
+<meta name="description" content="Wiener Öffis: Abfahrten in Echtzeit und welcher Ausgang wohin führt.">
+<meta name="theme-color" content="#14181f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Öffi Ausgang">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e3000f'/%3E%3Cpath d='M9 8v10a7 7 0 0 0 14 0V8' fill='none' stroke='white' stroke-width='3.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root {
+  --bg: #f4f2ee; --surface: #ffffff; --surface-2: #ece9e3; --text: #16181d; --muted: #5f6470;
+  --line: #d9d5cd; --accent: #c4000d; --accent-ink: #ffffff; --ok: #1d7a3e; --warn-bg: #fff3d6;
+  --warn-ink: #6b4a00; --focus: #1a5fd0; --exit: #1d7a3e; --lift: #1a5fd0; --esc: #8a3ffc; --steps: #6b7280;
+  --dest: #c4000d; --radius: 14px; --shadow: 0 1px 2px rgb(0 0 0 / .06), 0 2px 10px rgb(0 0 0 / .05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101318; --surface: #191d24; --surface-2: #232833; --text: #eef0f3; --muted: #a0a7b4;
+    --line: #2e3440; --accent: #ff4d57; --accent-ink: #16181d; --ok: #4fc47c; --warn-bg: #3a2f12;
+    --warn-ink: #ffd98a; --focus: #7aa7ff; --exit: #4fc47c; --lift: #7aa7ff; --esc: #b48cff; --steps: #a0a7b4;
+    --dest: #ff4d57; --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101318; --surface: #191d24; --surface-2: #232833; --text: #eef0f3; --muted: #a0a7b4;
+  --line: #2e3440; --accent: #ff4d57; --accent-ink: #16181d; --ok: #4fc47c; --warn-bg: #3a2f12;
+  --warn-ink: #ffd98a; --focus: #7aa7ff; --exit: #4fc47c; --lift: #7aa7ff; --esc: #b48cff; --steps: #a0a7b4;
+  --dest: #ff4d57; --shadow: none;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 17px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 0 16px calc(32px + env(safe-area-inset-bottom)); }
+
+/* header */
+header {
+  position: sticky; top: 0; z-index: 1000; background: var(--bg);
+  border-bottom: 1px solid var(--line); padding-top: env(safe-area-inset-top);
+}
+header .wrap { display: flex; align-items: center; gap: 8px; min-height: 56px; padding-bottom: 0; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 750; font-size: 19px; letter-spacing: -.01em; margin-right: auto; text-decoration: none; color: inherit; }
+.brand svg { width: 28px; height: 28px; flex: none; }
+.iconbtn {
+  width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--surface);
+}
+.iconbtn svg { width: 22px; height: 22px; }
+.iconbtn[hidden] { display: none; }
+
+/* home */
+.search { position: relative; margin: 18px 0 12px; }
+.search input {
+  width: 100%; height: 56px; border-radius: var(--radius); border: 1px solid var(--line);
+  background: var(--surface); padding: 0 16px 0 48px; font-size: 18px; box-shadow: var(--shadow);
+}
+.search svg { position: absolute; left: 16px; top: 17px; width: 22px; height: 22px; color: var(--muted); }
+.row-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.chipbtn {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 600;
+}
+.chipbtn svg { width: 18px; height: 18px; }
+h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 22px 0 8px; font-weight: 700; }
+.list { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--radius); border: 1px solid var(--line); overflow: hidden; box-shadow: var(--shadow); }
+.list li + li { border-top: 1px solid var(--line); }
+.stop {
+  display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; padding: 12px 16px;
+  background: none; border: 0; min-height: 56px;
+}
+.stop:hover { background: var(--surface-2); }
+.stop .name { font-weight: 650; display: flex; gap: 8px; align-items: baseline; }
+.stop .dist { color: var(--muted); font-weight: 500; font-size: 15px; margin-left: auto; white-space: nowrap; }
+.badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.empty { color: var(--muted); padding: 14px 16px; }
+.hint { color: var(--muted); font-size: 15px; }
+
+/* line badges */
+.ln {
+  display: inline-grid; place-items: center; min-width: 30px; height: 24px; padding: 0 6px; border-radius: 6px;
+  font-size: 13px; font-weight: 800; color: #fff; background: #6b7280; line-height: 1; letter-spacing: -.01em;
+}
+.ln.big { min-width: 40px; height: 32px; font-size: 16px; border-radius: 8px; }
+.ln.U1 { background: #e3000f; } .ln.U2 { background: #a762a4; } .ln.U3 { background: #e87d0d; }
+.ln.U4 { background: #319f49; } .ln.U5 { background: #3aa6b9; } .ln.U6 { background: #9d6830; }
+.ln.tram { background: #c4000d; border-radius: 12px; } .ln.bus { background: #1f3f8f; } .ln.night { background: #20232b; border: 1px solid #555; }
+.ln.train { background: #5b6170; }
+
+/* station */
+.st-head { display: flex; align-items: flex-start; gap: 12px; margin: 18px 0 6px; }
+.st-head h1 { font-size: 28px; line-height: 1.15; margin: 0; letter-spacing: -.02em; flex: 1; }
+.st-lines { margin-bottom: 10px; }
+.star[aria-pressed="true"] { color: #e8a400; }
+.star[aria-pressed="true"] svg { fill: currentColor; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); margin: 12px 0; overflow: hidden; }
+.card > .hd { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.card > .hd h3 { margin: 0; font-size: 17px; margin-right: auto; }
+.card > .hd .stamp { color: var(--muted); font-size: 14px; }
+.alert { background: var(--warn-bg); color: var(--warn-ink); border-radius: var(--radius); padding: 12px 14px; margin: 10px 0; font-size: 15px; }
+.alert b { display: block; margin-bottom: 2px; }
+.alert + .alert { margin-top: 6px; }
+
+.dep { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: center; padding: 10px 16px; width: 100%; background: none; border: 0; text-align: left; }
+.dep + .dep { border-top: 1px solid var(--line); }
+.dep:hover { background: var(--surface-2); }
+.dep .to { font-weight: 650; min-width: 0; }
+.dep .to small { display: block; font-weight: 450; color: var(--muted); font-size: 14px; }
+.dep .times { display: flex; gap: 10px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.dep .t1 { font-size: 24px; font-weight: 800; min-width: 2ch; text-align: right; }
+.dep .t1.now { color: var(--accent); font-size: 18px; }
+.dep .tn { color: var(--muted); font-size: 16px; }
+.dep .plan { font-style: italic; }
+.dep.sel { background: var(--surface-2); box-shadow: inset 4px 0 0 var(--focus); }
+.msg { padding: 16px; color: var(--muted); }
+.msg button { margin-top: 10px; }
+
+#map { height: min(62vh, 520px); background: var(--surface-2); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 10px 16px; font-size: 14px; color: var(--muted); border-top: 1px solid var(--line); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.sw.line { width: 18px; height: 4px; border-radius: 2px; }
+.dest-bar { display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 15px; }
+.dest-bar p { margin: 0; flex: 1; }
+.dest-bar button { min-height: 40px; }
+
+.exits li { display: flex; gap: 12px; align-items: center; padding: 10px 16px; cursor: pointer; }
+.exits li:hover { background: var(--surface-2); }
+.exits li.best { background: color-mix(in srgb, var(--exit) 14%, transparent); }
+.num { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 14px; background: var(--exit); color: #fff; }
+.exits .info { flex: 1; min-width: 0; }
+.exits .meta { color: var(--muted); font-size: 14px; }
+.exits .d { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+details.more { border-top: 1px solid var(--line); }
+details.more summary { padding: 12px 16px; cursor: pointer; font-weight: 600; }
+details.more ul { list-style: none; margin: 0; padding: 0 16px 12px; }
+details.more li { padding: 8px 0; font-size: 15px; display: flex; gap: 10px; }
+details.more li + li { border-top: 1px solid var(--line); }
+.off { color: var(--accent); font-weight: 700; }
+
+/* map markers */
+.mk { display: grid; place-items: center; border-radius: 50%; font-weight: 800; font-size: 13px; color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgb(0 0 0 / .35); }
+.mk.exit { background: var(--exit); }
+.mk.exit.best { background: var(--dest); transform: scale(1.25); }
+.mk.lift { background: var(--lift); border-radius: 7px; }
+.mk.lift.broken { background: #777; text-decoration: line-through; }
+.mk.dest { background: var(--dest); border-radius: 50% 50% 50% 0; transform: rotate(-45deg); }
+.mk.plat { border-radius: 6px; font-size: 12px; padding: 0 4px; width: auto !important; min-width: 30px; }
+.mk.plat.sel { outline: 3px solid var(--focus); outline-offset: 2px; }
+.arrow { color: var(--esc); font-size: 16px; font-weight: 900; line-height: 1; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
+.leaflet-popup-content { font: 15px/1.4 system-ui, sans-serif; }
+.leaflet-container { font: inherit; }
+
+/* settings */
+dialog { border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--text); padding: 20px; width: min(520px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgb(0 0 0 / .45); }
+dialog h3 { margin: 0 0 8px; }
+dialog label { display: block; font-weight: 600; margin: 14px 0 6px; }
+dialog input { width: 100%; height: 48px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); padding: 0 12px; font-size: 16px; }
+dialog .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+.btn { min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 650; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+footer { color: var(--muted); font-size: 13px; margin-top: 28px; }
+footer a { color: inherit; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <button class="iconbtn" id="back" hidden aria-label="Zurück">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <a class="brand" href="#">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#e3000f"/><path d="M9 8v10a7 7 0 0 0 14 0V8" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/></svg>
+      Öffi Ausgang
+    </a>
+    <button class="iconbtn" id="settingsBtn" aria-label="Einstellungen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="home">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <label class="sr" for="q">Station suchen</label>
+      <input id="q" type="search" placeholder="Station suchen, z. B. Karlsplatz" autocomplete="off" enterkeyhint="search">
+    </div>
+    <div class="row-actions">
+      <button class="chipbtn" id="nearBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+        In meiner Nähe
+      </button>
+    </div>
+    <div id="results"></div>
+    <div id="favs"></div>
+  </section>
+
+  <section id="station" hidden></section>
+
+  <footer>
+    Echtzeitdaten: <a href="https://www.wienerlinien.at/open-data" rel="noopener">Wiener Linien</a> (CC BY 4.0) ·
+    Aufzüge: <a href="https://data.wien.gv.at" rel="noopener">Stadt Wien</a> (CC BY 4.0) ·
+    Ausgänge &amp; Stiegen: © <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a>-Mitwirkende ·
+    Karte: <a href="https://basemap.at" rel="noopener">basemap.at</a>.
+    Kein offizielles Angebot der Wiener Linien. <span id="gen"></span>
+  </footer>
+</main>
+
+<dialog id="settings">
+  <form method="dialog">
+    <h3>Einstellungen</h3>
+    <p class="hint">Die Wiener Linien erlauben keinen direkten Zugriff aus dem Browser. Die Live-Abfahrten laufen deshalb über einen kleinen Cloudflare Worker.</p>
+    <label for="workerUrl">Worker-Adresse</label>
+    <input id="workerUrl" type="url" placeholder="https://wien-ausgang.NAME.workers.dev" autocomplete="off">
+    <div class="btns">
+      <button class="btn" value="cancel">Abbrechen</button>
+      <button class="btn primary" value="save" id="saveSettings">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="data.js"></script>
+<script>
+"use strict";
+
+// Address of the Cloudflare Worker that relays the Wiener Linien realtime API
+// (see worker/worker.js). Can be overridden per device in the settings dialog.
+const WORKER_URL = "";
+
+const REFRESH_MS = 30000;   // fetch new departures
+const TICK_MS = 10000;      // re-render countdowns between fetches
+const D = window.WA_DATA;
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const store = {
+  get(k, def) { try { const v = localStorage.getItem("wa." + k); return v == null ? def : JSON.parse(v); } catch { return def; } },
+  set(k, v) { try { localStorage.setItem("wa." + k, JSON.stringify(v)); } catch { /* private mode */ } },
+};
+const workerUrl = () => (store.get("worker", "") || WORKER_URL).replace(/\/+$/, "");
+
+// ---------- data indexes ------------------------------------------------------
+const stops = D.stops.map(([diva, name, lat, lon, lines]) => ({ diva, name, lat, lon, lines: lines ? lines.split(" ") : [], key: norm(name) }));
+const stopByDiva = new Map(stops.map((s) => [s.diva, s]));
+const stationByDiva = new Map(D.stations.map((s) => [s.diva, s]));
+
+function norm(s) {
+  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/ß/g, "ss").replace(/stra?s?s?e\b|str\./g, "str").replace(/bahnhof/g, "bhf")
+    .replace(/sankt|st\./g, "st").replace(/[^a-z0-9]+/g, " ").trim();
+}
+function dist(a, b) {
+  const x = (b.lon - a.lon) * Math.PI / 180 * Math.cos((a.lat + b.lat) * Math.PI / 360);
+  const y = (b.lat - a.lat) * Math.PI / 180;
+  return 6371000 * Math.hypot(x, y);
+}
+const fmtDist = (m) => (m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1).replace(".", ",")} km`);
+const walkMin = (m) => Math.max(1, Math.round(m / 75)); // ~4.5 km/h
+
+function lineClass(name, type) {
+  if (/^U\d$/.test(name)) return name;
+  if (/^N/.test(name) && name.length > 1) return "night";
+  if (type === "ptBusCity" || type === "ptBusNight" || /^\d+[AB]$/.test(name)) return "bus";
+  if (type === "ptTrainS" || type === "ptTrain" || /^S\d/.test(name) || name === "WLB") return "train";
+  return "tram";
+}
+const badge = (name, type, big) => `<span class="ln ${lineClass(name, type)}${big ? " big" : ""}">${esc(name)}</span>`;
+
+// ---------- routing ------------------------------------------------------------
+function route() {
+  const m = location.hash.match(/^#\/s\/(\d+)/);
+  stopStation();
+  if (m && stopByDiva.has(+m[1])) showStation(+m[1]);
+  else showHome();
+}
+window.addEventListener("hashchange", route);
+$("#back").addEventListener("click", () => { if (history.length > 1) history.back(); else location.hash = ""; });
+
+// ---------- home ---------------------------------------------------------------
+function stopItem(s, extra = "") {
+  const shown = s.lines.slice(0, 10);
+  return `<li><button class="stop" data-diva="${s.diva}">
+    <span class="name">${esc(s.name)}${extra ? `<span class="dist">${extra}</span>` : ""}</span>
+    <span class="badges">${shown.map((l) => badge(l)).join("")}${s.lines.length > shown.length ? `<span class="hint">+${s.lines.length - shown.length}</span>` : ""}</span>
+  </button></li>`;
+}
+function search(q) {
+  const toks = norm(q).split(" ").filter(Boolean);
+  if (!toks.length) return [];
+  return stops
+    .filter((s) => toks.every((t) => s.key.includes(t)))
+    .map((s) => ({ s, score: (s.key.startsWith(toks[0]) ? 0 : 2) + (stationByDiva.has(s.diva) ? 0 : 1) + s.name.length / 100 }))
+    .sort((a, b) => a.score - b.score).slice(0, 25).map((x) => x.s);
+}
+function renderResults() {
+  const q = $("#q").value;
+  const el = $("#results");
+  if (!q.trim()) { el.innerHTML = ""; renderFavs(); return; }
+  const r = search(q);
+  $("#favs").innerHTML = "";
+  el.innerHTML = r.length ? `<ul class="list">${r.map((s) => stopItem(s)).join("")}</ul>` : `<div class="list"><p class="empty">Keine Station gefunden.</p></div>`;
+}
+function renderFavs() {
+  const favs = store.get("favs", []).map((d) => stopByDiva.get(d)).filter(Boolean);
+  $("#favs").innerHTML = favs.length
+    ? `<h2>Gemerkt</h2><ul class="list">${favs.map((s) => stopItem(s)).join("")}</ul>`
+    : `<p class="hint">Tipp: Mit dem Stern in einer Station merkst du sie dir hier.</p>`;
+}
+$("#q").addEventListener("input", renderResults);
+$("#q").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { const b = $("#results .stop"); if (b) b.click(); }
+});
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".stop[data-diva]");
+  if (b) location.hash = `#/s/${b.dataset.diva}`;
+});
+$("#nearBtn").addEventListener("click", () => {
+  const el = $("#results");
+  if (!navigator.geolocation) { el.innerHTML = `<p class="hint">Standort wird von diesem Browser nicht unterstützt.</p>`; return; }
+  el.innerHTML = `<p class="hint">Suche Standort …</p>`;
+  navigator.geolocation.getCurrentPosition((p) => {
+    const me = { lat: p.coords.latitude, lon: p.coords.longitude };
+    const near = stops.map((s) => ({ s, d: dist(me, s) })).sort((a, b) => a.d - b.d).slice(0, 10);
+    $("#q").value = "";
+    $("#favs").innerHTML = "";
+    el.innerHTML = `<h2>In deiner Nähe</h2><ul class="list">${near.map(({ s, d }) => stopItem(s, `${fmtDist(d)} · ${walkMin(d)} min`)).join("")}</ul>`;
+  }, () => { el.innerHTML = `<p class="hint">Standort nicht verfügbar. Bitte Zugriff erlauben oder Station suchen.</p>`; },
+  { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+});
+
+function showHome() {
+  document.title = "Öffi Ausgang";
+  $("#station").hidden = true; $("#home").hidden = false; $("#back").hidden = true;
+  renderResults();
+}
+
+// ---------- station ------------------------------------------------------------
+let cur = null; // { diva, stop, station, map, layers, dest, monitors, fetchedAt, timers, sel }
+
+function stopStation() {
+  if (!cur) return;
+  cur.timers.forEach(clearInterval);
+  if (cur.map) cur.map.remove();
+  cur = null;
+}
+
+function showStation(diva) {
+  const stop = stopByDiva.get(diva);
+  const station = stationByDiva.get(diva) || null;
+  cur = { diva, stop, station, map: null, layers: {}, dest: null, data: null, error: null, fetchedAt: 0, timers: [], sel: null };
+  document.title = `${stop.name} · Öffi Ausgang`;
+  $("#home").hidden = true; $("#back").hidden = false;
+  const el = $("#station");
+  el.hidden = false;
+  const fav = store.get("favs", []).includes(diva);
+  const nExits = station ? station.exits.length : 0;
+  el.innerHTML = `
+    <div class="st-head">
+      <h1>${esc(stop.name)}</h1>
+      <button class="iconbtn star" id="star" aria-pressed="${fav}" aria-label="Station merken">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>
+      </button>
+    </div>
+    <div class="badges st-lines">${stop.lines.map((l) => badge(l, null, true)).join("")}</div>
+    <div id="alerts"></div>
+    <div class="card">
+      <div class="hd"><h3>Abfahrten</h3><span class="stamp" id="stamp"></span></div>
+      <div id="deps"><p class="msg">Lade Abfahrten …</p></div>
+    </div>
+    <div class="card">
+      <div class="hd"><h3>${station ? "Ausgänge" : "Lage"}</h3><span class="stamp">${station ? `${nExits} Ausgänge` : ""}</span></div>
+      <div id="map" role="region" aria-label="Karte der Station"></div>
+      ${station ? `<div class="legend">
+        <span><i class="sw" style="background:var(--exit)"></i>Ausgang</span>
+        <span><i class="sw" style="background:var(--lift);border-radius:3px"></i>Aufzug</span>
+        <span><i class="sw line" style="background:var(--esc)"></i>Rolltreppe</span>
+        <span><i class="sw line" style="background:var(--steps)"></i>Stiege</span>
+      </div>
+      <div class="dest-bar" id="destBar"><p>Tippe auf der Karte, <b>wohin du willst</b> – der nächste Ausgang wird markiert.</p></div>` : ""}
+      ${station ? `<ul class="list exits" id="exits" style="border:0;border-radius:0;box-shadow:none;border-top:1px solid var(--line)"></ul>` : ""}
+      ${station && station.lifts.length ? `<details class="more"><summary>Aufzüge (${station.lifts.length})</summary><ul id="lifts"></ul></details>` : ""}
+    </div>`;
+  $("#star").addEventListener("click", (e) => {
+    const favs = store.get("favs", []);
+    const i = favs.indexOf(diva);
+    if (i >= 0) favs.splice(i, 1); else favs.unshift(diva);
+    store.set("favs", favs);
+    e.currentTarget.setAttribute("aria-pressed", i < 0);
+  });
+  window.scrollTo(0, 0);
+  buildMap();
+  renderExits();
+  renderLifts();
+  loadDepartures();
+  cur.timers.push(setInterval(() => { if (!document.hidden) loadDepartures(); }, REFRESH_MS));
+  cur.timers.push(setInterval(() => { if (!document.hidden) renderDepartures(); }, TICK_MS));
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && cur && Date.now() - cur.fetchedAt > REFRESH_MS / 2) loadDepartures();
+});
+
+// ---------- departures -----------------------------------------------------------
+async function loadDepartures() {
+  const c = cur;
+  const base = workerUrl();
+  if (!base) {
+    c.error = "setup";
+    renderDepartures();
+    return;
+  }
+  const qs = new URLSearchParams({ diva: c.diva });
+  ["stoerungkurz", "stoerunglang", "aufzugsinfo", "fahrtreppeninfo"].forEach((t) => qs.append("activateTrafficInfo", t));
+  try {
+    const res = await fetch(`${base}/monitor?${qs}`, { headers: { Accept: "application/json" } });
+    const j = await res.json();
+    if (c !== cur) return;
+    if (!j.data) throw new Error(j.message?.value || `HTTP ${res.status}`);
+    c.data = j.data; c.error = null; c.fetchedAt = Date.now();
+  } catch (err) {
+    if (c !== cur) return;
+    c.error = String(err.message || err);
+  }
+  renderDepartures();
+  renderAlerts();
+  markBrokenLifts();
+}
+
+function minutesUntil(dt) {
+  const t = Date.parse((dt.timeReal || dt.timePlanned).replace(/([+-]\d\d)(\d\d)$/, "$1:$2"));
+  return Math.round((t - Date.now()) / 60000);
+}
+
+function departureRows() {
+  const rows = new Map();
+  for (const m of cur.data?.monitors || []) {
+    const rbl = m.locationStop?.properties?.attributes?.rbl;
+    for (const l of m.lines || []) {
+      for (const dep of l.departures?.departure || []) {
+        const v = dep.vehicle || {};
+        const name = v.name || l.name;
+        const towards = (v.towards || l.towards || "").trim();
+        const key = `${name}|${towards}`;
+        if (!rows.has(key)) rows.set(key, { name, towards, type: v.type || l.type, platform: l.platform || m.locationStop?.properties?.gate, rbl, times: [] });
+        rows.get(key).times.push({ min: minutesUntil(dep.departureTime), real: !!dep.departureTime.timeReal, wc: v.barrierFree ?? l.barrierFree });
+      }
+    }
+  }
+  const order = (r) => (/^U\d$/.test(r.name) ? 0 : lineClass(r.name, r.type) === "tram" ? 1 : lineClass(r.name, r.type) === "train" ? 2 : lineClass(r.name, r.type) === "bus" ? 3 : 4);
+  return [...rows.values()]
+    .map((r) => ({ ...r, times: r.times.filter((t) => t.min >= 0).sort((a, b) => a.min - b.min) }))
+    .filter((r) => r.times.length)
+    .sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name, "de", { numeric: true }) || a.times[0].min - b.times[0].min);
+}
+
+function renderDepartures() {
+  if (!cur) return;
+  const el = $("#deps");
+  const stamp = $("#stamp");
+  if (cur.error === "setup") {
+    el.innerHTML = `<div class="msg">Live-Abfahrten sind noch nicht eingerichtet.<br>
+      Trage die Adresse deines Cloudflare Workers in den Einstellungen ein.<br>
+      <button class="btn primary" onclick="openSettings()">Einstellungen öffnen</button></div>`;
+    stamp.textContent = "";
+    return;
+  }
+  if (cur.error && !cur.data) {
+    el.innerHTML = `<div class="msg">Abfahrten gerade nicht verfügbar (${esc(cur.error)}).<br><button class="btn" onclick="loadDepartures()">Nochmal versuchen</button></div>`;
+    return;
+  }
+  if (!cur.data) return;
+  const rows = departureRows();
+  const t = new Date(cur.fetchedAt);
+  stamp.textContent = (cur.error ? "veraltet · " : "") + "Stand " + t.toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  if (!rows.length) { el.innerHTML = `<p class="msg">Keine Abfahrten in den nächsten 70 Minuten.</p>`; return; }
+  const plats = new Set((cur.station?.platforms || []).map((p) => p.rbl));
+  el.innerHTML = rows.map((r) => {
+    const [first, ...rest] = r.times;
+    const tx = (x) => `${x.min}${x.real ? "" : "*"}`;
+    const canShow = plats.has(r.rbl);
+    const sel = cur.sel === r.rbl ? " sel" : "";
+    return `<button class="dep${sel}" data-rbl="${r.rbl}" ${canShow ? "" : "disabled"} aria-label="${esc(r.name)} nach ${esc(r.towards)}, in ${first.min} Minuten">
+      ${badge(r.name, r.type, true)}
+      <span class="to">${esc(r.towards)}<small>${r.platform ? (/^U/.test(r.name) ? "Gleis " : "Steig ") + esc(r.platform) : ""}${canShow ? `${r.platform ? " · " : ""}auf Karte zeigen` : ""}</small></span>
+      <span class="times">
+        <span class="t1 ${first.min <= 0 ? "now" : ""} ${first.real ? "" : "plan"}">${first.min <= 0 ? "jetzt" : tx(first)}</span>
+        <span class="tn">${rest.slice(0, 2).map(tx).join(" · ")}${rest.length ? " min" : first.min > 0 ? " min" : ""}</span>
+      </span>
+    </button>`;
+  }).join("") + (rows.some((r) => r.times.some((x) => !x.real)) ? `<p class="msg" style="padding-top:4px">* laut Fahrplan, ohne Echtzeit</p>` : "");
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".dep[data-rbl]");
+  if (!b || b.disabled || !cur) return;
+  const rbl = +b.dataset.rbl;
+  cur.sel = cur.sel === rbl ? null : rbl;
+  renderDepartures();
+  highlightPlatform();
+  if (cur.sel) $("#map").scrollIntoView({ behavior: "smooth", block: "center" });
+});
+
+function renderAlerts() {
+  const el = $("#alerts");
+  if (!el || !cur.data) return;
+  const cats = new Map((cur.data.trafficInfoCategories || []).map((c) => [c.id, c.name]));
+  const infos = (cur.data.trafficInfos || []).filter((t) => t.title || t.description);
+  const prio = { aufzugsinfo: 0, fahrtreppeninfo: 1, stoerunglang: 2, stoerungkurz: 3 };
+  infos.sort((a, b) => (prio[cats.get(a.refTrafficInfoCategoryId)] ?? 9) - (prio[cats.get(b.refTrafficInfoCategoryId)] ?? 9));
+  el.innerHTML = infos.slice(0, 6).map((t) => {
+    const cat = cats.get(t.refTrafficInfoCategoryId);
+    const label = cat === "aufzugsinfo" ? "Aufzug außer Betrieb" : cat === "fahrtreppeninfo" ? "Rolltreppe außer Betrieb" : t.title;
+    const body = cat === "aufzugsinfo" || cat === "fahrtreppeninfo" ? [t.title, t.description].filter(Boolean).join(" – ") : t.description;
+    return `<div class="alert" role="status"><b>${esc(label)}</b>${esc(body || "")}</div>`;
+  }).join("");
+}
+
+// ---------- map ---------------------------------------------------------------------
+function icon(cls, html, size = 30) {
+  return L.divIcon({ className: "", html: `<div class="mk ${cls}" style="width:${size}px;height:${size}px">${html}</div>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+}
+function bearing(a, b) {
+  const y = Math.sin((b[1] - a[1]) * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180);
+  const x = Math.cos(a[0] * Math.PI / 180) * Math.sin(b[0] * Math.PI / 180) - Math.sin(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.cos((b[1] - a[1]) * Math.PI / 180);
+  return Math.atan2(y, x) * 180 / Math.PI;
+}
+
+function buildMap() {
+  const { stop, station } = cur;
+  const center = station ? [station.lat, station.lon] : [stop.lat, stop.lon];
+  const map = L.map("map", { zoomControl: true, attributionControl: true }).setView(center, station ? 17 : 18);
+  cur.map = map;
+  L.tileLayer("https://mapsneu.wien.gv.at/basemap/bmapgrau/normal/google3857/{z}/{y}/{x}.png", {
+    maxZoom: 20, maxNativeZoom: 19, attribution: '<a href="https://basemap.at">basemap.at</a> · © <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+  }).addTo(map);
+
+  if (!station) {
+    L.marker([stop.lat, stop.lon], { icon: icon("exit", "H", 30) }).addTo(map).bindPopup(esc(stop.name));
+    return;
+  }
+
+  // stairs and escalators first, so the point markers sit on top
+  for (const w of station.ways || []) {
+    const isEsc = w.t === "esc";
+    const line = L.polyline(w.c, {
+      color: getComputedStyle(document.documentElement).getPropertyValue(isEsc ? "--esc" : "--steps").trim(),
+      weight: isEsc ? 6 : 5, opacity: .9, dashArray: isEsc ? null : "2 5", lineCap: isEsc ? "round" : "butt",
+    }).addTo(map);
+    line.bindPopup(wayLabel(w));
+    if (isEsc && w.d && w.d !== "reversible" && w.c.length > 1) {
+      // arrow in running direction (OSM: forward = drawing direction)
+      const [a, b] = w.d === "backward" ? [w.c[w.c.length - 1], w.c[w.c.length - 2]] : [w.c[w.c.length - 2], w.c[w.c.length - 1]];
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      L.marker(mid, { interactive: false, icon: L.divIcon({ className: "", iconSize: [16, 16], iconAnchor: [8, 8], html: `<div class="arrow" style="transform:rotate(${bearing(a, b) - 90}deg)">➤</div>` }) }).addTo(map);
+    }
+  }
+
+  cur.layers.lifts = station.lifts.map((l) => L.marker([l.lat, l.lon], { icon: icon("lift", liftSvg, 26), title: "Aufzug" })
+    .addTo(map).bindPopup(`<b>Aufzug${l.id ? " " + esc(l.id) : ""}</b><br>${esc(l.text || "")}`));
+
+  cur.layers.plats = new Map();
+  const seen = new Set();
+  for (const p of station.platforms) {
+    const k = `${p.line}|${p.lat}|${p.lon}`;
+    if (seen.has(k)) { cur.layers.plats.set(p.rbl, cur.layers.plats.get(p.rbl) || [...cur.layers.plats.values()].find(Boolean)); continue; }
+    seen.add(k);
+    const m = L.marker([p.lat, p.lon], { icon: platIcon(p.line, false), zIndexOffset: -100 })
+      .addTo(map).bindPopup(`<b>${esc(p.line)}</b> Bahnsteig<br>Richtung ${esc(platformDirs(p.line, p.lat, p.lon))}`);
+    m._line = p.line;
+    for (const q of station.platforms) if (q.line === p.line && q.lat === p.lat && q.lon === p.lon) cur.layers.plats.set(q.rbl, m);
+  }
+
+  cur.layers.exits = station.exits.map((e, i) => {
+    const m = L.marker([e.lat, e.lon], { icon: icon("exit", i + 1, 30), title: e.name || `Ausgang ${i + 1}`, zIndexOffset: 500 })
+      .addTo(map).bindPopup(exitPopup(e, i));
+    return m;
+  });
+
+  const pts = [...station.exits, ...station.lifts, ...station.platforms].map((p) => [p.lat, p.lon]);
+  if (pts.length > 1) map.fitBounds(pts, { padding: [28, 28], maxZoom: 18 });
+
+  map.on("click", (ev) => setDest({ lat: ev.latlng.lat, lon: ev.latlng.lng }));
+}
+const liftSvg = `<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M8 3l4 4H4zM8 21l-4-4h8zM15 6a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm-2 5h4l1 5h-1.5l-.5 5h-2.5l-.5-5H12z"/></svg>`;
+const platIcon = (line, sel) => L.divIcon({ className: "", iconSize: [34, 22], iconAnchor: [17, 11], html: `<div class="mk plat ln ${lineClass(line)}${sel ? " sel" : ""}" style="height:22px">${esc(line)}</div>` });
+function platformDirs(line, lat, lon) {
+  return [...new Set(cur.station.platforms.filter((p) => p.line === line && p.lat === lat && p.lon === lon).map((p) => p.to))].join(" / ");
+}
+function wayLabel(w) {
+  if (w.t === "esc") return `<b>Rolltreppe</b>${w.d === "reversible" ? "<br>Richtung wechselt" : w.d ? "<br>Pfeil = Fahrtrichtung" : ""}${w.n ? "<br>" + esc(w.n) : ""}`;
+  return `<b>Stiege</b>${w.s ? `<br>${w.s} Stufen` : ""}${w.r ? "<br>mit Rampe" : ""}${w.n ? "<br>" + esc(w.n) : ""}`;
+}
+function exitPopup(e, i) {
+  const bits = [];
+  if (e.wc === "yes") bits.push("stufenlos");
+  else if (e.wc === "limited") bits.push("eingeschränkt stufenlos");
+  if (e.lift) bits.push("Aufzug");
+  return `<b>${i + 1}. ${esc(e.name || "Ausgang")}</b>${bits.length ? "<br>" + bits.join(" · ") : ""}`;
+}
+
+function highlightPlatform() {
+  if (!cur.layers.plats) return;
+  for (const m of new Set(cur.layers.plats.values())) if (m) m.setIcon(platIcon(m._line, false));
+  const m = cur.sel && cur.layers.plats.get(cur.sel);
+  if (m) { m.setIcon(platIcon(m._line, true)); m.openPopup(); cur.map.panTo(m.getLatLng()); }
+}
+
+function markBrokenLifts() {
+  // elevator outages name the lift's plant id (e.g. "KP A04") in the text
+  if (!cur.layers.lifts || !cur.data) return;
+  const cats = new Map((cur.data.trafficInfoCategories || []).map((c) => [c.id, c.name]));
+  const text = (cur.data.trafficInfos || []).filter((t) => cats.get(t.refTrafficInfoCategoryId) === "aufzugsinfo")
+    .map((t) => `${t.title} ${t.description} ${JSON.stringify(t.attributes || {})}`).join(" ");
+  cur.station.lifts.forEach((l, i) => {
+    const broken = l.id && text.includes(l.id);
+    cur.layers.lifts[i].setIcon(icon(`lift${broken ? " broken" : ""}`, liftSvg, 26));
+  });
+}
+
+// ---------- destination → best exit ------------------------------------------------
+function setDest(p) {
+  cur.dest = p;
+  if (cur.layers.dest) cur.layers.dest.remove();
+  cur.layers.dest = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: "", iconSize: [26, 26], iconAnchor: [13, 26], html: `<div class="mk dest" style="width:26px;height:26px"></div>` }), zIndexOffset: 1000 }).addTo(cur.map);
+  renderExits();
+}
+function renderExits() {
+  const st = cur.station;
+  const ul = $("#exits");
+  if (!st || !ul) return;
+  if (!st.exits.length) { ul.innerHTML = `<li class="empty">Für diese Station sind keine Ausgänge erfasst.</li>`; return; }
+  let order = st.exits.map((e, i) => ({ e, i, d: cur.dest ? dist(cur.dest, e) : null }));
+  if (cur.dest) order.sort((a, b) => a.d - b.d);
+  const best = cur.dest ? order[0] : null;
+  ul.innerHTML = order.map(({ e, i, d }) => {
+    const meta = [e.wc === "yes" ? "stufenlos" : e.wc === "limited" ? "eingeschränkt stufenlos" : e.wc === "no" ? "nur Stiegen/Rolltreppe" : "", e.lift ? "Aufzug" : ""].filter(Boolean).join(" · ");
+    return `<li data-i="${i}" class="${best && best.i === i ? "best" : ""}">
+      <span class="num">${i + 1}</span>
+      <span class="info"><b>${esc(e.name || "Ausgang")}</b>${meta ? `<br><span class="meta">${meta}</span>` : ""}</span>
+      ${d != null ? `<span class="d">${fmtDist(d)}</span>` : ""}
+    </li>`;
+  }).join("");
+  cur.layers.exits?.forEach((m, i) => m.setIcon(icon(`exit${best && best.i === i ? " best" : ""}`, i + 1, 30)));
+  const bar = $("#destBar");
+  if (bar && best) {
+    bar.innerHTML = `<p>Nächster Ausgang: <b>${best.i + 1}. ${esc(best.e.name || "Ausgang")}</b> – ca. ${fmtDist(best.d)} (${walkMin(best.d)} min) zum Ziel.</p><button class="btn" id="clearDest">Ziel löschen</button>`;
+    $("#clearDest").addEventListener("click", () => { cur.dest = null; cur.layers.dest?.remove(); cur.layers.dest = null; bar.innerHTML = `<p>Tippe auf der Karte, <b>wohin du willst</b> – der nächste Ausgang wird markiert.</p>`; renderExits(); });
+  }
+}
+document.addEventListener("click", (e) => {
+  const li = e.target.closest("#exits li[data-i]");
+  if (!li || !cur?.layers.exits) return;
+  const m = cur.layers.exits[+li.dataset.i];
+  cur.map.setView(m.getLatLng(), Math.max(cur.map.getZoom(), 18));
+  m.openPopup();
+  $("#map").scrollIntoView({ behavior: "smooth", block: "center" });
+});
+function renderLifts() {
+  const ul = $("#lifts");
+  if (!ul) return;
+  ul.innerHTML = cur.station.lifts.map((l, i) => `<li><span class="mk lift" style="width:24px;height:24px;flex:none">${liftSvg}</span><span>${esc(l.text || "Aufzug")}${l.id ? ` <span class="hint">(${esc(l.id)})</span>` : ""}</span></li>`).join("");
+}
+
+// ---------- settings ---------------------------------------------------------------
+function openSettings() {
+  $("#workerUrl").value = store.get("worker", "") || WORKER_URL;
+  $("#settings").showModal();
+}
+$("#settingsBtn").addEventListener("click", openSettings);
+$("#settings").addEventListener("close", () => {
+  if ($("#settings").returnValue !== "save") return;
+  store.set("worker", $("#workerUrl").value.trim());
+  if (cur) loadDepartures();
+});
+
+$("#gen").textContent = `Datenstand Ausgänge: ${new Date(D.generated).toLocaleDateString("de-AT")}.`;
+route();
+</script>
+</body>
+</html>
