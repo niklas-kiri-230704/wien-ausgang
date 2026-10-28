@@ -41,6 +41,29 @@ On top of that:
   and the walk is drawn on the map. Falls back to straight-line distance if the
   server doesn't answer.
 
+- **Unterwegs mode** (`#/unterwegs`, "▶ Unterwegs-Modus starten" on an opened
+  trip): one big step at a time ("Zum Eingang 3", "U1 in 2 min, vorne
+  einsteigen", "Noch 3 Stationen", "Nächste Station aussteigen!", "Dann Ausgang 2").
+  Walking steps advance by GPS. Rides advance by the planner's per-stop times
+  plus the live delay (GPS doesn't work underground); a good GPS fix at a
+  station overrides that. One stop before getting off the card turns red and
+  three beeps play (Web Audio, unlocked by the start tap; `navigator.vibrate`
+  where supported, so not on iPhone). It asks the browser to keep the screen
+  on (Wake Lock). It only runs while the app is open; iOS gives web apps no
+  background GPS. "Zurück"/"Weiter" correct it by hand.
+- **Last search offline**: the last search (trips, exits, live state) is kept in
+  `localStorage` (`wa.lastPlan`, 12 h) and the Unterwegs step in `wa.nav`, so
+  both survive closing the app and work without network.
+- **Own exits** (⋮ on a station page): add a missing exit by tapping the map,
+  rename unnamed ones, delete or reset them. Stored on the device
+  (`wa.ownExits`, `wa.exitNames`); the planner and address search use them like
+  any other exit. They are not part of `data.js`, so the monthly refresh never
+  touches them.
+
+Everything personal (saved places, boarding notes, own exits, last search) lives
+in that browser's `localStorage` only. On iPhone the home-screen app and Safari
+have separate storage.
+
 Addresses come from the Stadt Wien address service (CORS-enabled, no key) with
 Photon (OpenStreetMap) as a fallback for shops and sights. `#/s/<diva>?to=lat,lon`
 opens a station map with the destination already marked.

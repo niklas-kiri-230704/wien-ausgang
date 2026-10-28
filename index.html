@@ -240,6 +240,30 @@ details.flt p { margin: 4px 0 0; color: var(--muted); }
 #placesEdit { list-style: none; margin: 0; padding: 0; }
 #placesEdit li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; }
 #placesEdit li + li { border-top: 1px solid var(--line); }
+.nav-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 16px 0 8px; font-size: 17px; }
+.nav-card { display: grid; grid-template-columns: 56px 1fr; gap: 14px; padding: 18px 16px; align-items: start; }
+.nav-card.alert-on { background: var(--warn-bg); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent); }
+.nav-ic { font-size: 34px; display: grid; place-items: center; min-height: 44px; }
+.nav-card p { margin: 6px 0 0; }
+.nav-big { font-size: 26px; font-weight: 800; line-height: 1.2; letter-spacing: -.01em; margin: 0 !important; }
+.nav-sub { color: var(--muted); font-size: 17px; }
+.nav-cd { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.nav-dist { font-size: 22px; font-weight: 750; }
+.nav-btns { display: flex; gap: 10px; }
+.nav-btns .btn { flex: 1; min-height: 52px; font-size: 17px; }
+.nav-btns .btn:disabled { opacity: .45; }
+#navMap { height: min(40vh, 320px); background: var(--surface-2); }
+.nav-list li { padding: 10px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#quick .chipbtn { min-height: 52px; font-size: 18px; padding: 0 20px; }
+.menuwrap { position: relative; }
+.menu { position: absolute; right: 0; top: 50px; z-index: 1100; min-width: 260px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 6px 24px rgb(0 0 0 / .18); overflow: hidden; }
+.menu[hidden] { display: none; }
+.menu button { display: block; width: 100%; text-align: left; padding: 12px 16px; min-height: 48px; background: none; border: 0; }
+.menu button + button { border-top: 1px solid var(--line); }
+.menu button:hover { background: var(--surface-2); }
+.exedit { display: inline-flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.exedit .btn { min-height: 36px; padding: 0 12px; font-size: 14px; }
+.mk.exit.own { border-style: dashed; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 </head>
@@ -261,6 +285,7 @@ details.flt p { margin: 4px 0 0; color: var(--muted); }
 
 <main class="wrap">
   <section id="home">
+    <div id="quick"></div>
     <div class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
       <label class="sr" for="q">Station suchen</label>
@@ -280,7 +305,6 @@ details.flt p { margin: 4px 0 0; color: var(--muted); }
         Adresse → Ausgang
       </a>
     </div>
-    <div id="quick"></div>
     <div id="results"></div>
     <div id="favs"></div>
   </section>
@@ -316,6 +340,8 @@ details.flt p { margin: 4px 0 0; color: var(--muted); }
     </div>
     <div id="pOut"></div>
   </section>
+
+  <section id="nav" hidden></section>
 
   <section id="place" hidden>
     <h1 class="pg">Welche Station, welcher Ausgang?</h1>
@@ -411,15 +437,17 @@ function route() {
   const m = h.match(/^#\/s\/(\d+)(?:\?to=(-?[\d.]+),(-?[\d.]+))?/);
   stopStation();
   stopPlan();
+  stopNav();
   if (m && stopByDiva.has(+m[1])) {
     showStation(+m[1]);
     if (m[2] && cur.station) setDest({ lat: +m[2], lon: +m[3] });
   } else if (h.startsWith("#/route")) showPlan();
+  else if (h.startsWith("#/unterwegs")) showNav();
   else if (h.startsWith("#/ort")) showPlaceView();
   else showHome();
 }
 function view(id) {
-  for (const s of ["home", "station", "plan", "place"]) $("#" + s).hidden = s !== id;
+  for (const s of ["home", "station", "plan", "place", "nav"]) $("#" + s).hidden = s !== id;
   $("#back").hidden = id === "home";
 }
 window.addEventListener("hashchange", route);
@@ -508,6 +536,15 @@ function showStation(diva) {
       <button class="iconbtn star" id="star" aria-pressed="${fav}" aria-label="Station merken">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>
       </button>
+      ${station ? `<div class="menuwrap">
+        <button class="iconbtn" id="moreBtn" type="button" aria-label="Mehr" aria-expanded="false" aria-controls="moreMenu">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+        </button>
+        <div class="menu" id="moreMenu" hidden>
+          <button type="button" data-act="add">Fehlenden Ausgang eintragen</button>
+          <button type="button" data-act="edit">Ausgänge umbenennen / löschen</button>
+        </div>
+      </div>` : ""}
     </div>
     <div class="badges st-lines">${stop.lines.map((l) => badge(l, null, true)).join("")}</div>
     <div id="alerts"></div>
@@ -534,6 +571,26 @@ function showStation(diva) {
     if (i >= 0) favs.splice(i, 1); else favs.unshift(diva);
     store.set("favs", favs);
     e.currentTarget.setAttribute("aria-pressed", i < 0);
+  });
+  $("#moreBtn")?.addEventListener("click", (e) => {
+    const m = $("#moreMenu");
+    m.hidden = !m.hidden;
+    e.currentTarget.setAttribute("aria-expanded", !m.hidden);
+  });
+  $("#moreMenu")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-act]");
+    if (!b) return;
+    $("#moreMenu").hidden = true;
+    if (b.dataset.act === "add") {
+      cur.mode = "add";
+      $("#destBar").innerHTML = `<p><b>Tippe auf der Karte</b>, wo der fehlende Ausgang ist.</p><button class="btn" id="cancelAdd" type="button">Abbrechen</button>`;
+      $("#cancelAdd").addEventListener("click", () => reloadStation());
+      $("#map").scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      cur.edit = !cur.edit;
+      renderExits();
+      $("#exits").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   });
   window.scrollTo(0, 0);
   buildMap();
@@ -725,7 +782,7 @@ function buildMap() {
   }
 
   cur.layers.exits = station.exits.map((e, i) => {
-    const m = L.marker([e.lat, e.lon], { icon: icon("exit", i + 1, 30), title: e.name || `Ausgang ${i + 1}`, zIndexOffset: 500 })
+    const m = L.marker([e.lat, e.lon], { icon: icon(`exit${e.own ? " own" : ""}`, i + 1, 30), title: e.name || `Ausgang ${i + 1}`, zIndexOffset: 500 })
       .addTo(map).bindPopup(exitPopup(e, i));
     return m;
   });
@@ -733,7 +790,10 @@ function buildMap() {
   const pts = [...station.exits, ...station.lifts, ...station.platforms].map((p) => [p.lat, p.lon]);
   if (pts.length > 1) map.fitBounds(pts, { padding: [28, 28], maxZoom: 18 });
 
-  map.on("click", (ev) => setDest({ lat: ev.latlng.lat, lon: ev.latlng.lng }));
+  map.on("click", (ev) => {
+    if (cur.mode === "add") addOwnExit({ lat: ev.latlng.lat, lon: ev.latlng.lng });
+    else setDest({ lat: ev.latlng.lat, lon: ev.latlng.lng });
+  });
 }
 const liftSvg = `<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M8 3l4 4H4zM8 21l-4-4h8zM15 6a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm-2 5h4l1 5h-1.5l-.5 5h-2.5l-.5-5H12z"/></svg>`;
 const platIcon = (line, sel) => L.divIcon({ className: "", iconSize: [34, 22], iconAnchor: [17, 11], html: `<div class="mk plat ln ${lineClass(line)}${sel ? " sel" : ""}" style="height:22px">${esc(line)}</div>` });
@@ -787,14 +847,15 @@ function renderExits() {
   if (cur.dest) order.sort((a, b) => a.d - b.d);
   const best = cur.dest ? order[0] : null;
   ul.innerHTML = order.map(({ e, i, d }) => {
-    const meta = exitMeta(e);
+    const meta = [exitMeta(e), e.own ? "selbst eingetragen" : e.renamed ? "selbst benannt" : ""].filter(Boolean).join(" · ");
     return `<li data-i="${i}" class="${best && best.i === i ? "best" : ""}">
       <span class="num">${i + 1}</span>
-      <span class="info"><b>${esc(e.name || "Ausgang")}</b>${meta ? `<br><span class="meta">${meta}</span>` : ""}</span>
+      <span class="info"><b>${esc(e.name || "Ausgang")}</b>${meta ? `<br><span class="meta">${meta}</span>` : ""}
+        ${cur.edit ? `<br><span class="exedit"><button type="button" class="btn" data-ren="${i}">Umbenennen</button>${e.own || e.renamed ? `<button type="button" class="btn" data-delx="${i}">${e.own ? "Löschen" : "Name zurücksetzen"}</button>` : ""}</span>` : ""}</span>
       ${d != null ? `<span class="d">${fmtDist(d)}</span>` : ""}
     </li>`;
   }).join("");
-  cur.layers.exits?.forEach((m, i) => m.setIcon(icon(`exit${best && best.i === i ? " best" : ""}`, i + 1, 30)));
+  cur.layers.exits?.forEach((m, i) => m.setIcon(icon(`exit${st.exits[i].own ? " own" : ""}${best && best.i === i ? " best" : ""}`, i + 1, 30)));
   const bar = $("#destBar");
   if (bar && best) {
     bar.innerHTML = `<p>Nächster Ausgang: <b>${best.i + 1}. ${esc(best.e.name || "Ausgang")}</b> – ca. ${fmtDist(best.d)} (${walkMin(best.d)} min) zum Ziel.</p><button class="btn" id="clearDest">Ziel löschen</button>`;
@@ -803,12 +864,62 @@ function renderExits() {
 }
 document.addEventListener("click", (e) => {
   const li = e.target.closest("#exits li[data-i]");
-  if (!li || !cur?.layers.exits) return;
+  if (!li || !cur?.layers.exits || e.target.closest("button")) return;
   const m = cur.layers.exits[+li.dataset.i];
   cur.map.setView(m.getLatLng(), Math.max(cur.map.getZoom(), 18));
   m.openPopup();
   $("#map").scrollIntoView({ behavior: "smooth", block: "center" });
 });
+// ---------- own exits: add missing ones, name unnamed ones (stored on this device) -------
+const exitId = (diva, e) => (e.osm ? String(e.osm) : `${diva}:${e.lat},${e.lon}`);
+for (const st of D.stations) st.baseExits = st.exits;
+function applyOwnExits() {
+  const own = store.get("ownExits", {}), names = store.get("exitNames", {});
+  for (const st of D.stations) {
+    st.exits = [
+      ...st.baseExits.map((e) => (names[exitId(st.diva, e)] ? { ...e, name: names[exitId(st.diva, e)], renamed: true } : e)),
+      ...(own[st.diva] || []).map((e) => ({ ...e, own: true })),
+    ];
+  }
+}
+applyOwnExits();
+function reloadStation() { const d = cur.diva, dest = cur.dest; stopStation(); showStation(d); if (dest) setDest(dest); }
+function addOwnExit(p) {
+  cur.mode = null;
+  const name = prompt("Name des Ausgangs (z. B. Straße oder Platz):", "");
+  if (name == null) { reloadStation(); return; }
+  const wc = confirm("Ist dieser Ausgang stufenlos (Aufzug oder Rampe)?");
+  const own = store.get("ownExits", {});
+  (own[cur.diva] = own[cur.diva] || []).push({ lat: +p.lat.toFixed(6), lon: +p.lon.toFixed(6), name: name.trim(), wc: wc ? "yes" : "no", lift: false, osm: `own-${Date.now()}` });
+  store.set("ownExits", own);
+  applyOwnExits();
+  reloadStation();
+}
+document.addEventListener("click", (e) => {
+  const ren = e.target.closest("[data-ren]"), del = e.target.closest("[data-delx]");
+  if (!cur?.station || !(ren || del)) return;
+  const ex = cur.station.exits[+(ren || del).dataset[ren ? "ren" : "delx"]];
+  const own = store.get("ownExits", {}), names = store.get("exitNames", {});
+  if (ren) {
+    const name = prompt("Neuer Name für diesen Ausgang:", ex.name || "");
+    if (name == null || !name.trim()) return;
+    if (ex.own) own[cur.diva].find((x) => x.osm === ex.osm).name = name.trim();
+    else names[exitId(cur.diva, ex)] = name.trim();
+  } else if (ex.own) {
+    if (!confirm(`Ausgang „${ex.name}“ löschen?`)) return;
+    own[cur.diva] = own[cur.diva].filter((x) => x.osm !== ex.osm);
+  } else delete names[exitId(cur.diva, ex)];
+  store.set("ownExits", own); store.set("exitNames", names);
+  applyOwnExits();
+  reloadStation();
+  cur.edit = true;
+  renderExits();
+});
+document.addEventListener("click", (e) => {
+  const m = $("#moreMenu");
+  if (m && !m.hidden && !e.target.closest(".menuwrap")) m.hidden = true;
+});
+
 function exitMeta(e) {
   return [e.wc === "yes" ? "stufenlos" : e.wc === "limited" ? "eingeschränkt stufenlos" : e.wc === "no" ? "nur Stiegen/Rolltreppe" : "", e.lift ? "Aufzug" : ""].filter(Boolean).join(" · ");
 }
@@ -1029,6 +1140,7 @@ const localIso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.get
 const hm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const parseWL = (s) => Date.parse(s.replace(/([+-]\d\d)(\d\d)$/, "$1:$2"));
 const efaDate = (dt) => { const [d, m, y] = dt.date.split("."); const [H, M] = dt.time.split(":"); return new Date(+y, m - 1, +d, +H, +M); };
+const seqDate = (s) => { const m = /^(\d{4})(\d\d)(\d\d) (\d\d):(\d\d)/.exec(s || ""); return m ? new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]) : null; };
 const llOf = (c) => { const [x, y] = String(c || "").split(",").map(Number); return x && y ? { lat: y, lon: x } : null; };
 const pathLen = (p) => p.reduce((s, q, i) => (i ? s + dist(p[i - 1], q) : 0), 0);
 const isU = (l) => l && !l.walk && /^U\d$/.test(l.line);
@@ -1054,6 +1166,9 @@ function parseLeg(l) {
     walk, line: m.symbol || m.number || "", type: ptType(m.product), towards: (m.destination || "").replace(/^Wien\s+/, ""),
     from: pt(pts[0]), to: pt(pts[pts.length - 1]), path, meters: walk ? pathLen(path) : 0,
     stops: Math.max(0, (l.stopSeq || []).length - 1), live: null,
+    seq: walk ? [] : (l.stopSeq || []).map((q) => ({
+      name: (q.nameWO || q.name || "").replace(/^Wien[ ,]\s*/, ""), ll: llOf(q.ref?.coords), t: seqDate(q.ref?.depDateTime || q.ref?.arrDateTime),
+    })),
   };
 }
 function parseTrip(t) {
@@ -1133,7 +1248,8 @@ async function loadLive() {
   if (trips !== plan.trips) return;
   for (const t of trips) for (const l of t.legs) if (!l.walk && got.has(l.from.diva)) l.live = matchLive(got.get(l.from.diva), l);
   if (faults.at !== faultsBefore) trips.forEach(annotateExits);
-  renderTrips(true);
+  savePlan();
+  if (!$("#plan").hidden) renderTrips(true);
 }
 
 // When to leave, live arrival and how much time each transfer leaves.
@@ -1238,10 +1354,12 @@ function renderTrips(update) {
   if (!update || !out.querySelector(".trip")) {
     if (plan.map) { plan.map.remove(); plan.map = null; }
     const crow = dist(plan.from, plan.to);
-    out.innerHTML = `<div class="reshd"><h2>${esc(plan.from.name)} → ${esc(plan.to.name)}</h2>${!plan.to.here && !isSaved(plan.to) ? `<button class="chipbtn sm" type="button" id="saveTo">☆ Ziel speichern</button>` : ""}</div>`
+    out.innerHTML = (plan.restored ? `<p class="hint">Gespeicherte Suche von ${hm(new Date(plan.at))}${navigator.onLine === false ? " – offline, Echtzeit fehlt" : " – Echtzeit wird aktualisiert"}.</p>` : "")
+      + `<div class="reshd"><h2>${esc(plan.from.name)} → ${esc(plan.to.name)}</h2>${!plan.to.here && !isSaved(plan.to) ? `<button class="chipbtn sm" type="button" id="saveTo">☆ Ziel speichern</button>` : ""}</div>`
       + (crow < 1500 ? `<div class="alert"><b>🚶 Zu Fuß ca. ${walkMin(crow * 1.3)} min</b>Ungefähr ${fmtDist(crow * 1.3)} – vielleicht schneller als mit den Öffis.</div>` : "")
       + plan.trips.map((t, i) => `<div class="card trip" data-i="${i}"><button class="sum" type="button"></button>
-          <div class="body" hidden><div class="stepsbox"></div><div class="tmap"></div></div></div>`).join("")
+          <div class="body" hidden><div class="links"><button class="btn primary" type="button" data-start="${i}">▶ Unterwegs-Modus starten</button></div>
+          <div class="stepsbox"></div><div class="tmap"></div></div></div>`).join("")
       + `<p class="hint">Zeiten laut Fahrplan, <span class="live">●</span> = Echtzeit der Wiener Linien. Ein- und Ausgang: der kürzeste Weg zum nächsten Ziel.</p>`;
   }
   const lives = plan.trips.map(tripLive);
@@ -1277,7 +1395,10 @@ function drawTripMap() {
   const t = plan.trips[plan.open];
   const el = $(`#pOut .trip[data-i="${plan.open}"] .tmap`);
   if (!t || !el) return;
-  const map = plan.map = baseMap(el, [t.legs[0].from.ll?.lat || 48.2, t.legs[0].from.ll?.lon || 16.37], 15);
+  plan.map = tripMap(el, t);
+}
+function tripMap(el, t) {
+  const map = baseMap(el, [t.legs[0].from.ll?.lat || 48.2, t.legs[0].from.ll?.lon || 16.37], 15);
   const css = getComputedStyle(document.documentElement);
   const all = [];
   for (const l of t.legs) {
@@ -1297,6 +1418,7 @@ function drawTripMap() {
   if (a) L.circleMarker([a.lat, a.lon], { radius: 8, color: "#fff", weight: 3, fillColor: css.getPropertyValue("--ok").trim(), fillOpacity: 1 }).addTo(map).bindPopup("Start");
   if (z) L.marker([z.lat, z.lon], { icon: L.divIcon({ className: "", iconSize: [26, 26], iconAnchor: [13, 26], html: `<div class="mk dest" style="width:26px;height:26px"></div>` }), zIndexOffset: 1000 }).addTo(map).bindPopup("Ziel");
   if (all.length > 1) map.fitBounds(all, { padding: [24, 24], maxZoom: 18, animate: false });
+  return map;
 }
 
 async function searchTrips() {
@@ -1337,7 +1459,8 @@ async function searchTrips() {
     if (when === "now" && ahead.length) trips = ahead;
     trips = trips.slice(0, 6);
     if (!trips.length) throw new Error("Keine Verbindung gefunden. Andere Zeit oder Adresse probieren?");
-    Object.assign(plan, { from, to, trips, when, at: Date.now(), open: 0 });
+    Object.assign(plan, { from, to, trips, when, at: Date.now(), open: 0, restored: false });
+    savePlan();
     renderTrips();
     startPlanTimers();
     await loadLive();
@@ -1346,13 +1469,33 @@ async function searchTrips() {
     out.innerHTML = `<div class="card"><p class="msg">${esc(err.message || err)}</p></div>`;
   }
 }
+// The last search (with its exits and live state) is kept on the device, so it is
+// still there without network, e.g. underground, and survives closing the app.
+const ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
+function savePlan() {
+  if (!plan.trips) return;
+  try {
+    localStorage.setItem("wa.lastPlan", JSON.stringify({ at: plan.at, from: plan.from, to: plan.to, when: plan.when, wc: plan.wc, trips: plan.trips }));
+  } catch { /* storage full or blocked */ }
+}
+function restorePlan() {
+  if (plan.trips) return true;
+  try {
+    const s = JSON.parse(localStorage.getItem("wa.lastPlan"), (k, v) => (typeof v === "string" && ISO.test(v) ? new Date(v) : v));
+    if (!s?.trips?.length || Date.now() - s.at > 12 * 3600000) return false;
+    Object.assign(plan, { from: s.from, to: s.to, when: s.when, wc: s.wc, trips: s.trips, at: s.at, open: 0, restored: true });
+    pFrom.set(s.from.here ? HERE : s.from);
+    pTo.set(s.to.here ? HERE : s.to);
+    return true;
+  } catch { return false; }
+}
 function startPlanTimers() {
   plan.timers.forEach(clearInterval);
   plan.timers = [
     setInterval(() => { if (!document.hidden) loadLive(); }, REFRESH_MS),
     setInterval(() => {
       if (document.hidden) return;
-      if (plan.when === "now" && Date.now() - plan.at > 120000 && plan.trips?.every((t) => tripLive(t).gone)) { searchTrips(); return; }
+      if (plan.when === "now" && navigator.onLine !== false && Date.now() - plan.at > 120000 && plan.trips?.every((t) => tripLive(t).gone)) { searchTrips(); return; }
       renderTrips(true);
     }, TICK_MS),
   ];
@@ -1367,7 +1510,209 @@ function showPlan() {
   view("plan");
   window.scrollTo(0, 0);
   if (plan.auto) { plan.auto = false; searchTrips(); }
-  else if (plan.trips) { renderTrips(); startPlanTimers(); loadLive(); }
+  else if (restorePlan()) { renderTrips(); startPlanTimers(); loadLive(); }
+}
+
+// ---------- "Unterwegs" mode: one step at a time while travelling ----------------------
+// Steps advance by themselves: walking by GPS (near the entrance/stop/destination),
+// rides by the stop times plus the live delay, because GPS is useless underground.
+// One stop before getting off it beeps (and vibrates where the phone supports it).
+const nav = { trip: null, steps: [], i: 0, pos: null, watch: null, timers: [], map: null, me: null, wake: null, audio: null, alerted: -1, centered: -1 };
+
+function buildSteps(t) {
+  const S = [], L = t.legs;
+  L.forEach((l, i) => {
+    const prev = L[i - 1], next = L[i + 1];
+    if (l.walk) {
+      const ent = next?.entry, out = prev?.exit;
+      const title = !next ? "Zum Ziel gehen"
+        : ent ? `Zum Eingang ${ent.i + 1}${ent.e.name ? ` „${ent.e.name}“` : ""}` : `Zur Haltestelle ${next.from.name}`;
+      const sub = !next ? plan.to.name : ent ? `Station ${next.from.name}` : next.from.plat ? `Steig ${next.from.plat}` : "";
+      S.push({ kind: "walk", leg: l, next, title, sub, from: out, target: ent ? ent.e : next ? next.from.ll : l.to.ll });
+      return;
+    }
+    if (l.entry && prev && !prev.walk) S.push({ kind: "walk", leg: l, next: l, title: `Zum Eingang ${l.entry.i + 1}${l.entry.e.name ? ` „${l.entry.e.name}“` : ""}`, sub: `Station ${l.from.name}`, from: prev.exit, target: l.entry.e });
+    S.push({ kind: "wait", leg: l });
+    S.push({ kind: "ride", leg: l, next });
+  });
+  S.push({ kind: "done" });
+  return S;
+}
+const depOf = (l) => (l.live ? l.live.t : l.from.t).getTime();
+function rideState(l) {
+  const delay = (l.live?.delay || 0) * 60000, now = Date.now(), last = l.seq.length - 1;
+  let k = 0;
+  l.seq.forEach((s, j) => { if (j < last && s.t && s.t.getTime() + delay <= now) k = j; });
+  // a good GPS fix at a station (above-ground stretches) beats the timetable
+  if (nav.pos && nav.pos.acc < 80) {
+    l.seq.forEach((s, j) => { if (s.ll && dist(nav.pos, s.ll) < 120 && j > k) k = Math.min(j, last); });
+  }
+  const arrived = l.seq[last]?.t && l.seq[last].t.getTime() + delay <= now;
+  return { left: arrived ? 0 : Math.max(last - k, 1), next: l.seq[k + 1]?.name || l.to.name, arr: new Date((l.seq[last]?.t || l.to.t).getTime() + delay) };
+}
+function stepDone(st) {
+  const now = Date.now();
+  if (st.kind === "walk") {
+    if (nav.pos && st.target && dist(nav.pos, st.target) < Math.max(30, Math.min(nav.pos.acc, 60))) return true;
+    return !!st.next && !st.next.walk && now > depOf(st.next) - 30000; // the ride has started: you're on it
+  }
+  if (st.kind === "wait") return now > depOf(st.leg) + 45000;
+  if (st.kind === "ride") {
+    if (st.leg.exit && nav.pos && nav.pos.acc < 60 && dist(nav.pos, st.leg.exit.e) < 30) return true;
+    return now > rideState(st.leg).arr.getTime() + 90000;
+  }
+  return false;
+}
+
+function startNav(i) {
+  nav.trip = plan.trips[i];
+  nav.steps = buildSteps(nav.trip);
+  nav.i = 0; nav.alerted = -1; nav.centered = -1;
+  store.set("nav", { at: plan.at, trip: i, step: 0 });
+  // the tap is the user gesture that lets the page play the warning tone later
+  try { nav.audio = nav.audio || new (window.AudioContext || window.webkitAudioContext)(); nav.audio.resume(); } catch { /* no audio */ }
+  location.hash = "#/unterwegs";
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-start]");
+  if (b) startNav(+b.dataset.start);
+});
+function showNav() {
+  if (!nav.trip) {
+    const saved = store.get("nav", null);
+    if (saved && restorePlan() && plan.at === saved.at && plan.trips[saved.trip]) {
+      nav.trip = plan.trips[saved.trip];
+      nav.steps = buildSteps(nav.trip);
+      nav.i = Math.min(saved.step, nav.steps.length - 1);
+    } else { location.replace("#/route"); return; }
+  }
+  document.title = "Unterwegs · Öffi Ausgang";
+  view("nav");
+  window.scrollTo(0, 0);
+  $("#nav").innerHTML = `
+    <div class="nav-top"><span id="navEta"></span><button class="btn" type="button" id="navEnd">Beenden</button></div>
+    <div class="card nav-card" id="navCard" aria-live="polite"></div>
+    <div class="nav-btns"><button class="btn" type="button" id="navPrev">◀ Zurück</button><button class="btn" type="button" id="navNext">Weiter ▶</button></div>
+    <div class="card"><div id="navMap"></div></div>
+    <h2>Danach</h2><ol class="list nav-list" id="navList"></ol>
+    <p class="hint">Die Schritte gehen von selbst weiter (GPS beim Gehen, Fahrplan + Echtzeit in der U-Bahn). Mit „Weiter“ / „Zurück“ korrigieren.</p>`;
+  $("#navEnd").addEventListener("click", () => { store.set("nav", null); nav.trip = null; location.hash = "#/route"; });
+  $("#navPrev").addEventListener("click", () => { nav.i = Math.max(0, nav.i - 1); nav.hold = Date.now(); saveNav(); renderNav(); });
+  $("#navNext").addEventListener("click", () => { nav.i = Math.min(nav.steps.length - 1, nav.i + 1); saveNav(); renderNav(); });
+  nav.map = tripMap($("#navMap"), nav.trip);
+  if (navigator.geolocation) {
+    nav.watch = navigator.geolocation.watchPosition((p) => {
+      nav.pos = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy || 999 };
+      tickNav();
+    }, () => {}, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+  }
+  keepAwake();
+  nav.timers = [
+    setInterval(() => { if (!document.hidden) tickNav(); }, 5000),
+    setInterval(() => { if (!document.hidden) loadLive().then(tickNav); }, REFRESH_MS),
+  ];
+  loadLive().then(tickNav);
+  tickNav();
+}
+function stopNav() {
+  nav.timers.forEach(clearInterval);
+  nav.timers = [];
+  if (nav.watch != null) navigator.geolocation.clearWatch(nav.watch);
+  nav.watch = null;
+  nav.wake?.release?.().catch(() => {});
+  nav.wake = null;
+  if (nav.map) { nav.map.remove(); nav.map = null; nav.me = null; }
+}
+async function keepAwake() {
+  try { nav.wake = await navigator.wakeLock?.request("screen"); } catch { /* not supported */ }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && nav.map && !nav.wake) keepAwake(); });
+const saveNav = () => { const s = store.get("nav", null); if (s) store.set("nav", { ...s, step: nav.i }); };
+
+function tickNav() {
+  if (!nav.trip || !nav.map) return;
+  // after a manual "Zurück" give the user a minute before auto-advancing again
+  if (!(nav.hold && Date.now() - nav.hold < 60000)) {
+    let moved = false;
+    while (nav.i < nav.steps.length - 1 && stepDone(nav.steps[nav.i])) { nav.i++; moved = true; }
+    if (moved) saveNav();
+  }
+  renderNav();
+}
+function beep() {
+  try { navigator.vibrate?.([300, 150, 300, 150, 300]); } catch { /* iPhone: no vibration API */ }
+  const a = nav.audio;
+  if (!a) return;
+  try {
+    a.resume();
+    [0, 0.35, 0.7].forEach((d) => {
+      const o = a.createOscillator(), g = a.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(a.destination);
+      g.gain.setValueAtTime(0.0001, a.currentTime + d);
+      g.gain.exponentialRampToValueAtTime(0.4, a.currentTime + d + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + d + 0.25);
+      o.start(a.currentTime + d); o.stop(a.currentTime + d + 0.3);
+    });
+  } catch { /* ignore */ }
+}
+function stepLine(st) {
+  const l = st.leg;
+  if (st.kind === "walk") return `🚶 ${esc(st.title)}`;
+  if (st.kind === "wait") return `${badge(l.line, l.type)} ab ${hm(new Date(depOf(l)))} Richtung ${esc(l.towards)}`;
+  if (st.kind === "ride") return `${badge(l.line, l.type)} bis ${esc(l.to.name)}${l.exit ? ` · Ausgang ${l.exit.i + 1}` : ""}`;
+  return `🏁 ${esc(plan.to.name)}`;
+}
+function renderNav() {
+  const st = nav.steps[nav.i], l = st.leg, now = Date.now();
+  $("#navEta").innerHTML = `Ankunft ca. <b>${hm(tripLive(nav.trip).arr)}</b>`;
+  let icon = "🚶", big = "", sub = "", extra = "", alert = false;
+  if (st.kind === "walk") {
+    big = esc(st.title);
+    sub = esc(st.sub);
+    if (st.from) extra += `<p>Zuerst <b>Ausgang ${st.from.i + 1}${st.from.e.name ? ` „${esc(st.from.e.name)}“` : ""}</b> nehmen.</p>`;
+    if (nav.pos && st.target) extra += `<p class="nav-dist">noch ${fmtDist(dist(nav.pos, st.target))}</p>`;
+    if (st.next && !st.next.walk) {
+      const m = Math.round((depOf(st.next) - now) / 60000);
+      extra += `<p class="meta">${badge(st.next.line, st.next.type)} fährt ${m <= 0 ? "jetzt" : `in ${m} min`} (${hm(new Date(depOf(st.next)))})</p>`;
+    }
+  } else if (st.kind === "wait") {
+    icon = badge(l.line, l.type, true);
+    big = `Richtung ${esc(l.towards)}`;
+    sub = `${esc(l.from.name)}${l.from.plat ? ` · ${/^U/.test(l.line) ? "Gleis" : "Steig"} ${esc(l.from.plat)}` : ""}`;
+    const m = Math.round((depOf(l) - now) / 60000);
+    extra = `<p class="nav-cd">${m <= 0 ? "jetzt" : `in ${m} min`}</p><p class="meta">ab ${hm(new Date(depOf(l)))} · ${l.live?.real ? "Echtzeit" : "laut Fahrplan"}</p>`;
+    const b = l.boardKey && store.get("board", {})[l.boardKey];
+    if (b) extra += `<p>🚃 <b>${BOARD[b]} einsteigen</b></p>`;
+  } else if (st.kind === "ride") {
+    icon = badge(l.line, l.type, true);
+    const r = rideState(l);
+    alert = r.left <= 1;
+    big = r.left === 0 ? "Jetzt aussteigen!" : r.left === 1 ? "Nächste Station aussteigen!" : `Noch ${r.left} Stationen`;
+    sub = `bis ${esc(l.to.name)} · an ${hm(r.arr)}${r.left > 1 ? ` · nächste: ${esc(r.next)}` : ""}`;
+    if (l.exit) extra = `<p>Dann <b>Ausgang ${l.exit.i + 1}${l.exit.e.name ? ` „${esc(l.exit.e.name)}“` : ""}</b>${exitMeta(l.exit.e) ? ` <span class="meta">(${exitMeta(l.exit.e)})</span>` : ""}</p>`;
+    if (l.exit && exitLiftBroken(stationByDiva.get(l.exit.diva), l.exit.e, l.exit.at)) extra += `<p class="warn">⚠ Der Aufzug bei diesem Ausgang ist außer Betrieb</p>`;
+    else if (st.next && !st.next.walk) extra = `<p>Dann umsteigen: ${badge(st.next.line, st.next.type)} Richtung ${esc(st.next.towards)}</p>`;
+    if (alert && nav.alerted !== nav.i) { nav.alerted = nav.i; beep(); }
+  } else {
+    icon = "🏁"; big = "Angekommen"; sub = esc(plan.to.name);
+  }
+  const card = $("#navCard");
+  card.classList.toggle("alert-on", alert);
+  card.innerHTML = `<div class="nav-ic">${icon}</div><div><p class="nav-big">${big}</p>${sub ? `<p class="nav-sub">${sub}</p>` : ""}${extra}</div>`;
+  $("#navPrev").disabled = nav.i === 0;
+  $("#navNext").disabled = nav.i === nav.steps.length - 1;
+  $("#navList").innerHTML = nav.steps.slice(nav.i + 1, nav.i + 5).map((x) => `<li>${stepLine(x)}</li>`).join("") || `<li class="empty">–</li>`;
+  // map: your position, and the current goal in view while walking
+  if (nav.pos) {
+    const ll = [nav.pos.lat, nav.pos.lon];
+    if (!nav.me) nav.me = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1 }).addTo(nav.map);
+    else nav.me.setLatLng(ll);
+  }
+  if (nav.centered !== nav.i) {
+    nav.centered = nav.i;
+    const goal = st.kind === "walk" ? st.target : st.kind === "ride" ? (l.exit?.e || l.to.ll) : st.kind === "wait" ? l.from.ll : null;
+    if (goal) nav.map.fitBounds([[goal.lat, goal.lon], ...(nav.pos && st.kind === "walk" ? [[nav.pos.lat, nav.pos.lon]] : [])], { padding: [40, 40], maxZoom: 18, animate: false });
+  }
 }
 
 // ---------- address → nearest station + exit -----------------------------------------
