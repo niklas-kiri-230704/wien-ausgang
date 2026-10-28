@@ -8,6 +8,23 @@ want to go and it marks the closest exit.
 Runs on GitHub Pages. The only live request is departures, which go through a
 small Cloudflare Worker (see below for why).
 
+Two planner views (buttons on the start page):
+
+- **Route planen** (`#/route`): from/to as address, station, place or "Mein
+  Standort". Trips come from the Wiener Linien trip planner (EFA, timetable
+  only, via the worker's `/trip`). Every ride is then matched to the live
+  monitor of its boarding stop, so you get real departure times, "Losgehen in
+  N min", and a warning when a delay breaks a connection. Each U-Bahn boarding
+  gets the entrance closest to where you come from, each alighting the exit
+  closest to where you go next (address or connecting tram/bus stop). "stufenlos"
+  asks the planner for step-free trips and prefers step-free exits/lifts.
+- **Adresse → Ausgang** (`#/ort`): enter an address and get the three nearest
+  U-Bahn stations with their best exit, plus all stops nearby.
+
+Addresses come from the Stadt Wien address service (CORS-enabled, no key) with
+Photon (OpenStreetMap) as a fallback for shops and sights. `#/s/<diva>?to=lat,lon`
+opens a station map with the destination already marked.
+
 It's a PWA: on iPhone, Safari → Share → "Zum Home-Bildschirm" installs it with
 its own icon, full-screen. Station maps and exits also work offline; only
 departures need network.
@@ -28,8 +45,9 @@ The Wiener Linien realtime API (`wienerlinien.at/ogd_realtime/monitor`) is free
 and keyless, but it sends no `Access-Control-Allow-Origin` header, so browsers
 block a page on another domain from reading it (verified in Chrome, 2026-10-27).
 The worker fetches it server-side and adds that header. It only relays the
-read-only realtime endpoints (`monitor`, `trafficInfoList`, `newsList`, …), so it
-isn't an open proxy, and it caches responses for 15 s.
+read-only realtime endpoints (`monitor`, `trafficInfoList`, `newsList`, …) and
+the trip planner (`/trip` → `ogd_routing/XML_TRIP_REQUEST2`), so it isn't an open
+proxy. It caches realtime responses for 15 s and trips for 30 s.
 
 ## Data
 
