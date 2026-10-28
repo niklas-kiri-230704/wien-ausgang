@@ -225,6 +225,21 @@ a.chipbtn { text-decoration: none; color: inherit; }
 .place-hd { padding: 12px 16px; }
 .place-hd b { font-size: 18px; }
 #placeMap { height: min(46vh, 380px); background: var(--surface-2); }
+.reshd { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.reshd h2 { margin-right: auto; }
+.chipbtn.sm { min-height: 36px; padding: 0 12px; font-size: 15px; margin-top: 14px; }
+.go.warnline { color: var(--warn-ink); }
+details.flt { margin-top: 6px; font-size: 15px; }
+details.flt summary { cursor: pointer; color: var(--warn-ink); font-weight: 650; }
+details.flt p { margin: 4px 0 0; color: var(--muted); }
+.board { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 15px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { min-height: 36px; padding: 0 12px; border: 0; background: var(--surface); font-weight: 600; text-transform: capitalize; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--focus); color: #fff; }
+#placesEdit { list-style: none; margin: 0; padding: 0; }
+#placesEdit li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; }
+#placesEdit li + li { border-top: 1px solid var(--line); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 </head>
@@ -265,6 +280,7 @@ a.chipbtn { text-decoration: none; color: inherit; }
         Adresse → Ausgang
       </a>
     </div>
+    <div id="quick"></div>
     <div id="results"></div>
     <div id="favs"></div>
   </section>
@@ -329,6 +345,10 @@ a.chipbtn { text-decoration: none; color: inherit; }
     <p class="hint">Die Wiener Linien erlauben keinen direkten Zugriff aus dem Browser. Die Live-Abfahrten laufen deshalb über einen kleinen Cloudflare Worker.</p>
     <label for="workerUrl">Worker-Adresse</label>
     <input id="workerUrl" type="url" placeholder="https://wien-ausgang.NAME.workers.dev" autocomplete="off">
+    <label>Gespeicherte Orte</label>
+    <ul id="placesEdit"></ul>
+    <label>Notizen „Wo einsteigen“</label>
+    <p class="hint" style="margin:0"><span id="boardCount"></span> <button type="button" class="btn" id="clearBoard">Alle löschen</button></p>
     <div class="btns">
       <button class="btn" value="cancel">Abbrechen</button>
       <button class="btn primary" value="save" id="saveSettings">Speichern</button>
@@ -633,10 +653,13 @@ function renderAlerts() {
   const cats = new Map((cur.data.trafficInfoCategories || []).map((c) => [c.id, c.name]));
   const infos = (cur.data.trafficInfos || []).filter((t) => t.title || t.description);
   const prio = { aufzugsinfo: 0, fahrtreppeninfo: 1, stoerunglang: 2, stoerungkurz: 3 };
-  infos.sort((a, b) => (prio[cats.get(a.refTrafficInfoCategoryId)] ?? 9) - (prio[cats.get(b.refTrafficInfoCategoryId)] ?? 9));
+  infos.sort((a, b) => (faultActive(a) ? 0 : 10) - (faultActive(b) ? 0 : 10)
+    || (prio[cats.get(a.refTrafficInfoCategoryId)] ?? 9) - (prio[cats.get(b.refTrafficInfoCategoryId)] ?? 9));
   el.innerHTML = infos.slice(0, 6).map((t) => {
     const cat = cats.get(t.refTrafficInfoCategoryId);
-    const label = cat === "aufzugsinfo" ? "Aufzug außer Betrieb" : cat === "fahrtreppeninfo" ? "Rolltreppe außer Betrieb" : t.title;
+    const what = cat === "aufzugsinfo" ? "Aufzug" : "Rolltreppe";
+    const label = cat === "aufzugsinfo" || cat === "fahrtreppeninfo"
+      ? (faultActive(t) ? `${what} außer Betrieb` : `${what} geplant außer Betrieb: ${fmtWindow(t)}`) : t.title;
     const body = cat === "aufzugsinfo" || cat === "fahrtreppeninfo" ? [t.title, t.description].filter(Boolean).join(" – ") : t.description;
     return `<div class="alert" role="status"><b>${esc(label)}</b>${esc(body || "")}</div>`;
   }).join("");
@@ -737,13 +760,13 @@ function highlightPlatform() {
 }
 
 function markBrokenLifts() {
-  // elevator outages name the lift's plant id (e.g. "KP A04") in the text
+  // outages carry the lift's plant id ("SL 03"), our data spells it "SL A03"
   if (!cur.layers.lifts || !cur.data) return;
   const cats = new Map((cur.data.trafficInfoCategories || []).map((c) => [c.id, c.name]));
-  const text = (cur.data.trafficInfos || []).filter((t) => cats.get(t.refTrafficInfoCategoryId) === "aufzugsinfo")
-    .map((t) => `${t.title} ${t.description} ${JSON.stringify(t.attributes || {})}`).join(" ");
+  const keys = new Set((cur.data.trafficInfos || [])
+    .filter((t) => cats.get(t.refTrafficInfoCategoryId) === "aufzugsinfo" && faultActive(t)).map((t) => liftKey(t.elevatorId)));
   cur.station.lifts.forEach((l, i) => {
-    const broken = l.id && text.includes(l.id);
+    const broken = l.id && keys.has(liftKey(l.id));
     cur.layers.lifts[i].setIcon(icon(`lift${broken ? " broken" : ""}`, liftSvg, 26));
   });
 }
@@ -795,6 +818,97 @@ function renderLifts() {
   ul.innerHTML = cur.station.lifts.map((l, i) => `<li><span class="mk lift" style="width:24px;height:24px;flex:none">${liftSvg}</span><span>${esc(l.text || "Aufzug")}${l.id ? ` <span class="hint">(${esc(l.id)})</span>` : ""}</span></li>`).join("");
 }
 
+// ---------- faults: lift/escalator outages and line disruptions ---------------------
+// One trafficInfoList call covers the whole network; refreshed at most once a minute.
+const faults = { at: 0, list: [] };
+const liftKey = (id) => String(id || "").toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^([A-Z]{2})A?0*(\d+)$/, "$1$2");
+const wlDate = (s) => { const m = /^(\d\d)\.(\d\d)\.(\d{4}) (\d\d):(\d\d)/.exec(s || ""); return m ? new Date(+m[3], m[2] - 1, +m[1], +m[4], +m[5]) : null; };
+function faultActive(t, at = Date.now()) {
+  // planned maintenance comes with a window (ausVon/ausBis) and is listed weeks ahead
+  const from = wlDate(t.attributes?.ausVon), to = wlDate(t.attributes?.ausBis);
+  return !(from && at < from) && !(to && at > to);
+}
+function fmtWindow(t) {
+  const f = (d) => `${d.getDate()}.${d.getMonth() + 1}. ${hm(d)}`;
+  const from = wlDate(t.attributes?.ausVon), to = wlDate(t.attributes?.ausBis);
+  return from && to ? `${f(from)} – ${f(to)}` : "";
+}
+async function loadFaults() {
+  const base = workerUrl();
+  if (!base || Date.now() - faults.at < 60000) return;
+  try {
+    const qs = new URLSearchParams();
+    for (const n of ["aufzugsinfo", "fahrtreppeninfo", "stoerunglang", "stoerungkurz"]) qs.append("name", n);
+    const j = await (await fetch(`${base}/trafficInfoList?${qs}`)).json();
+    const cats = new Map((j.data?.trafficInfoCategories || []).map((c) => [c.id, c.name]));
+    faults.list = (j.data?.trafficInfos || []).map((t) => ({ ...t, cat: cats.get(t.refTrafficInfoCategoryId) }));
+    faults.at = Date.now();
+  } catch { /* keep the last list */ }
+}
+function stationFaults(st, at) {
+  const rbls = new Set(st.platforms.map((p) => p.rbl)), name = norm(st.name);
+  return faults.list.filter((t) => (t.cat === "aufzugsinfo" || t.cat === "fahrtreppeninfo") && faultActive(t, at)
+    && ((t.relatedStops || []).some((r) => rbls.has(r)) || norm(t.title || "").startsWith(name)));
+}
+function brokenLifts(st, at) {
+  const keys = new Set(stationFaults(st, at).filter((t) => t.cat === "aufzugsinfo").map((t) => liftKey(t.elevatorId)));
+  return st.lifts.filter((l) => l.id && keys.has(liftKey(l.id)));
+}
+const exitLiftBroken = (st, e, at) => brokenLifts(st, at).some((l) => dist(l, e) < 60);
+function lineFaults(line) {
+  const rank = (t) => (t.cat === "stoerunglang" ? 0 : 1);
+  return faults.list.filter((t) => (t.cat === "stoerunglang" || t.cat === "stoerungkurz") && (t.relatedLines || []).includes(line))
+    .sort((a, b) => rank(a) - rank(b));
+}
+
+// ---------- saved places ("Zuhause", "Arzt", …) ------------------------------------------
+const savedPlaces = () => store.get("places", []).map((x) => ({ ...x, saved: true }));
+function savePlace(p) {
+  const label = prompt("Name für diesen Ort (z. B. Zuhause, Arzt):", "")?.trim();
+  if (!label) return false;
+  const list = store.get("places", []).filter((x) => x.label !== label);
+  list.push({ label, name: label, sub: p.sub && !p.saved ? `${p.name}, ${p.sub}` : p.name, lat: p.lat, lon: p.lon, diva: p.diva || null });
+  store.set("places", list);
+  renderQuick();
+  return true;
+}
+const isSaved = (p) => savedPlaces().some((x) => dist(x, p) < 30);
+function renderQuick() {
+  const list = savedPlaces();
+  $("#quick").innerHTML = list.length ? `<h2>Schnell hin</h2><div class="row-actions">${list.map((x, i) =>
+    `<button class="chipbtn" data-go="${i}">${esc(x.label)}</button>`).join("")}</div>` : "";
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-go]");
+  if (!b) return;
+  pTo.set(savedPlaces()[+b.dataset.go]);
+  pFrom.set(HERE);
+  plan.auto = true;
+  location.hash = "#/route";
+});
+function renderPlacesEdit() {
+  const list = store.get("places", []);
+  $("#placesEdit").innerHTML = list.length ? list.map((x, i) => `<li><span><b>${esc(x.label)}</b><br><small class="hint">${esc(x.sub || "")}</small></span>
+    <button type="button" class="btn" data-del="${i}" aria-label="${esc(x.label)} löschen">Löschen</button></li>`).join("")
+    : `<li class="hint">Noch keine. Speichern geht im Routenplaner oder bei „Adresse → Ausgang“.</li>`;
+  const n = Object.keys(store.get("board", {})).length;
+  $("#boardCount").textContent = n ? `${n} gespeichert` : "keine";
+  $("#clearBoard").hidden = !n;
+}
+$("#placesEdit").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-del]");
+  if (!b) return;
+  const list = store.get("places", []);
+  list.splice(+b.dataset.del, 1);
+  store.set("places", list);
+  renderPlacesEdit(); renderQuick();
+});
+$("#clearBoard").addEventListener("click", () => {
+  if (!confirm("Alle Notizen „Wo einsteigen“ löschen?")) return;
+  store.set("board", {});
+  renderPlacesEdit();
+});
+
 // ---------- places: address / station / POI search -----------------------------------
 const HERE = { here: true, name: "Mein Standort" };
 let lastPos = null;
@@ -814,7 +928,7 @@ async function resolvePlace(p) {
   return { ...HERE, lat: pos.lat, lon: pos.lon };
 }
 function remember(p) {
-  if (!p || p.here) return;
+  if (!p || p.here || p.saved) return;
   const r = store.get("recent", []).filter((x) => !(x.name === p.name && dist(x, p) < 50));
   r.unshift({ name: p.name, sub: p.sub || "", lat: p.lat, lon: p.lon, diva: p.diva || null });
   store.set("recent", r.slice(0, 6));
@@ -865,7 +979,7 @@ function picker(input, list, { here = false, onPick } = {}) {
       + (note ? `<li class="empty">${esc(note)}</li>` : "");
     list.hidden = !items.length && !note;
   };
-  const defaults = () => [...(here ? [{ ...HERE, sub: "per GPS" }] : []), ...store.get("recent", [])];
+  const defaults = () => [...(here ? [{ ...HERE, sub: "per GPS" }] : []), ...savedPlaces(), ...store.get("recent", []).filter((x) => !isSaved(x))];
   input.addEventListener("focus", () => {
     if (!input.value.trim() || pk.value) show(defaults());
     if (pk.value) setTimeout(() => input.select(), 0);
@@ -950,12 +1064,12 @@ function parseTrip(t) {
   return trip;
 }
 
-function pickExit(st, line, target) {
+function pickExit(st, line, target, at) {
   const plats = st.platforms.filter((p) => p.line === line);
   const pc = plats.length ? { lat: plats.reduce((s, p) => s + p.lat, 0) / plats.length, lon: plats.reduce((s, p) => s + p.lon, 0) / plats.length } : st;
-  const penalty = (e) => (plan.wc && e.wc !== "yes" && !e.lift ? 2000 : 0);
+  const penalty = (e) => (plan.wc && ((e.wc !== "yes" && !e.lift) || exitLiftBroken(st, e, at)) ? 2000 : 0);
   const best = st.exits.map((e, i) => ({ e, i, d: dist(e, target), s: dist(pc, e) + dist(e, target) + penalty(e) })).sort((a, b) => a.s - b.s)[0];
-  return best && { ...best, diva: st.diva, target };
+  return best && { ...best, diva: st.diva, target, at };
 }
 function annotateExits(trip) {
   const L = trip.legs;
@@ -967,13 +1081,17 @@ function annotateExits(trip) {
     const before = prev?.walk ? L[i - 2] : prev, after = next?.walk ? L[i + 2] : next;
     if (st && prev && !(isU(before) && before.to.diva === leg.from.diva)) {
       const from = prev.walk ? prev.from.ll : prev.to.ll;
-      if (from) leg.entry = pickExit(st, leg.line, from);
+      if (from) leg.entry = pickExit(st, leg.line, from, leg.from.t);
     }
     st = uStation(leg.to.diva);
     if (st && next && !(isU(after) && after.from.diva === leg.to.diva)) {
       const target = next.walk ? next.to.ll : next.from.ll;
-      if (target) leg.exit = pickExit(st, leg.line, target);
+      if (target) leg.exit = pickExit(st, leg.line, target, leg.to.t);
     }
+    // "where to board" is remembered per line, direction, stop and what you head for
+    const to = leg.exit ? `x${leg.exit.e.osm || leg.exit.i}` : isU(after) && after.from.diva === leg.to.diva ? `u${after.line}` : "";
+    leg.boardKey = to && `${leg.line}|${norm(leg.towards)}|${leg.to.diva}|${to}`;
+    leg.boardFor = leg.exit ? `Ausgang ${leg.exit.i + 1}${leg.exit.e.name ? " " + leg.exit.e.name : ""}` : to ? `Umstieg in die ${after.line}` : "";
   });
 }
 
@@ -1008,11 +1126,13 @@ async function loadLive() {
   if (!trips || !base) return;
   const divas = new Set(trips.flatMap((t) => t.legs.filter((l) => !l.walk && l.from.diva).map((l) => l.from.diva)));
   const got = new Map();
-  await Promise.all([...divas].map(async (d) => {
+  const faultsBefore = faults.at;
+  await Promise.all([loadFaults(), ...[...divas].map(async (d) => {
     try { const j = await (await fetch(`${base}/monitor?diva=${d}`)).json(); if (j.data) got.set(d, j.data); } catch { /* keep previous */ }
-  }));
+  })]);
   if (trips !== plan.trips) return;
   for (const t of trips) for (const l of t.legs) if (!l.walk && got.has(l.from.diva)) l.live = matchLive(got.get(l.from.diva), l);
+  if (faults.at !== faultsBefore) trips.forEach(annotateExits);
   renderTrips(true);
 }
 
@@ -1049,14 +1169,44 @@ function summaryHtml(t, lv) {
   const live = t.legs.some((l) => l.live?.real);
   return `<span class="top"><span class="tt">${hm(t.dep)} – ${hm(lv.arr)}</span>${live ? `<span class="live">● live</span>` : ""}
       <span class="dur">${Math.round((lv.arr - t.dep) / 60000)} min</span></span>
-    <span class="chain">${chain}</span>${go}${lv.risky ? `<div class="go late">Anschluss gefährdet</div>` : ""}`;
+    <span class="chain">${chain}</span>${go}${lv.risky ? `<div class="go late">Anschluss gefährdet</div>` : ""}${tripWarnings(t)}`;
+}
+function tripWarnings(t) {
+  const lines = [...new Set(t.legs.filter((l) => !l.walk && lineFaults(l.line).some((f) => f.cat === "stoerunglang")).map((l) => l.line))];
+  const lift = t.legs.some((l) => [l.entry, l.exit].some((x) => x && exitLiftBroken(stationByDiva.get(x.diva), x.e, x.at)));
+  return (lines.length ? `<div class="go warnline">⚠ Störung: ${lines.map(esc).join(", ")}</div>` : "")
+    + (lift ? `<div class="go warnline">⚠ Aufzug am Aus-/Eingang außer Betrieb</div>` : "");
 }
 function exitRow(kind, x, stName) {
   const meta = exitMeta(x.e);
+  const st = stationByDiva.get(x.diva);
+  const liftOut = exitLiftBroken(st, x.e, x.at);
+  const others = stationFaults(st, x.at).filter((t) => !(liftOut && t.cat === "aufzugsinfo" && brokenLifts(st, x.at).some((l) => dist(l, x.e) < 60 && liftKey(l.id) === liftKey(t.elevatorId))));
   return `<li class="exitrow"><span class="ic"><span class="num">${x.i + 1}</span></span><div>
     <b>${kind} ${x.i + 1}: ${esc(x.e.name || "ohne Namen")}</b>
-    <br><span class="meta">${esc(stName)}${meta ? " · " + meta : ""} · <a href="#/s/${x.diva}?to=${x.target.lat.toFixed(6)},${x.target.lon.toFixed(6)}">Stationsplan</a></span></div></li>`;
+    <br><span class="meta">${esc(stName)}${meta ? " · " + meta : ""} · <a href="#/s/${x.diva}?to=${x.target.lat.toFixed(6)},${x.target.lon.toFixed(6)}">Stationsplan</a></span>
+    ${liftOut ? `<br><span class="warn">⚠ Der Aufzug bei diesem Ausgang ist außer Betrieb</span>` : ""}
+    ${others.length ? `<details class="flt"><summary>⚠ ${others.length === 1 ? "1 Störung" : others.length + " Störungen"} in der Station</summary>${others.map((t) =>
+      `<p>${t.cat === "aufzugsinfo" ? "Aufzug" : "Rolltreppe"}: ${esc(t.description || t.attributes?.location || "")}</p>`).join("")}</details>` : ""}
+  </div></li>`;
 }
+const BOARD = { vorne: "Vorne", mitte: "In der Mitte", hinten: "Hinten" };
+function boardHtml(l) {
+  if (!l.boardKey) return "";
+  const v = store.get("board", {})[l.boardKey];
+  const seg = `<span class="seg" role="group" aria-label="Wo einsteigen">${Object.keys(BOARD).map((k) =>
+    `<button type="button" data-board="${esc(l.boardKey)}" data-v="${k}" aria-pressed="${v === k}">${k === "mitte" ? "Mitte" : k}</button>`).join("")}</span>`;
+  return `<div class="board">${v ? `<span>🚃 <b>${BOARD[v]} einsteigen</b> <span class="meta">(in Fahrtrichtung, für ${esc(l.boardFor)})</span></span>`
+    : `<span class="meta">Wo am besten einsteigen für ${esc(l.boardFor)}? Einmal merken:</span>`}${seg}</div>`;
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-board]");
+  if (!b) return;
+  const all = store.get("board", {}), k = b.dataset.board;
+  if (all[k] === b.dataset.v) delete all[k]; else all[k] = b.dataset.v;
+  store.set("board", all);
+  renderTrips(true);
+});
 function stepsHtml(t, lv) {
   const L = t.legs, rows = [];
   L.forEach((l, i) => {
@@ -1073,7 +1223,9 @@ function stepsHtml(t, lv) {
     rows.push(`<li><span class="ic">${badge(l.line, l.type, true)}</span><div>
       <b>${l.buffer != null && !L[i - 1]?.walk ? "Umsteigen · " : ""}Richtung ${esc(l.towards)}</b>
       <br>ab <b>${hm(l.from.t)}</b> ${liveTag(l)} · ${esc(l.from.name)}${plat}${buf}
-      <br><span class="meta">${l.stops} ${l.stops === 1 ? "Station" : "Stationen"} · an ${hm(l.to.t)} ${esc(l.to.name)}</span></div></li>`);
+      <br><span class="meta">${l.stops} ${l.stops === 1 ? "Station" : "Stationen"} · an ${hm(l.to.t)} ${esc(l.to.name)}</span>
+      ${lineFaults(l.line).slice(0, 2).map((f) => `<details class="flt"><summary>⚠ ${esc((f.title || "Störung").split("\n")[0])}</summary><p>${esc(f.description || "")}</p></details>`).join("")}
+      ${boardHtml(l)}</div></li>`);
     if (l.exit) rows.push(exitRow("Ausgang", l.exit, l.to.name));
   });
   rows.push(`<li><span class="ic" aria-hidden="true">🏁</span><div><b>Ankunft ${hm(lv.arr)}</b><br><span class="meta">${esc(plan.to.name)}</span></div></li>`);
@@ -1086,7 +1238,7 @@ function renderTrips(update) {
   if (!update || !out.querySelector(".trip")) {
     if (plan.map) { plan.map.remove(); plan.map = null; }
     const crow = dist(plan.from, plan.to);
-    out.innerHTML = `<h2>${esc(plan.from.name)} → ${esc(plan.to.name)}</h2>`
+    out.innerHTML = `<div class="reshd"><h2>${esc(plan.from.name)} → ${esc(plan.to.name)}</h2>${!plan.to.here && !isSaved(plan.to) ? `<button class="chipbtn sm" type="button" id="saveTo">☆ Ziel speichern</button>` : ""}</div>`
       + (crow < 1500 ? `<div class="alert"><b>🚶 Zu Fuß ca. ${walkMin(crow * 1.3)} min</b>Ungefähr ${fmtDist(crow * 1.3)} – vielleicht schneller als mit den Öffis.</div>` : "")
       + plan.trips.map((t, i) => `<div class="card trip" data-i="${i}"><button class="sum" type="button"></button>
           <div class="body" hidden><div class="stepsbox"></div><div class="tmap"></div></div></div>`).join("")
@@ -1110,6 +1262,7 @@ function renderTrips(update) {
     if (open) body.querySelector(".stepsbox").innerHTML = stepsHtml(t, lv);
   });
   if (plan.open >= 0 && !plan.map) drawTripMap();
+  $("#saveTo")?.addEventListener("click", (e) => { if (savePlace(plan.to)) e.currentTarget.remove(); }, { once: true });
 }
 document.addEventListener("click", (e) => {
   const b = e.target.closest(".trip > .sum");
@@ -1173,7 +1326,7 @@ async function searchTrips() {
       qs.set(`name_${k}`, p.diva ? String(p.diva) : `${p.lon.toFixed(6)}:${p.lat.toFixed(6)}:WGS84[DD.ddddd]`);
     }
     if (plan.wc) for (const k of ["imparedOptionsActive", "noSolidStairs", "noEscalators", "wheelchair", "lowPlatformVhcl"]) qs.set(k, "1");
-    const res = await fetch(`${base}/trip?${qs}`);
+    const [res] = await Promise.all([fetch(`${base}/trip?${qs}`), loadFaults()]);
     if (res.status === 404) throw new Error("Der Worker kennt den Routenplaner noch nicht – er muss neu deployed werden (worker/worker.js).");
     const j = await res.json();
     if (req !== plan.req) return;
@@ -1218,36 +1371,46 @@ function showPlan() {
 }
 
 // ---------- address → nearest station + exit -----------------------------------------
-let place = { p: null, map: null };
+let place = { p: null, map: null, layer: null, seq: 0 };
 function showPlaceView() {
   document.title = "Adresse → Ausgang · Öffi Ausgang";
   view("place");
   if (place.p) renderPlace(place.p);
 }
+
+// Walking distances from the FOSSGIS OSRM server (OpenStreetMap, CORS-enabled, no key).
+const OSRM = "https://routing.openstreetmap.de/routed-foot";
+const lonlat = (q) => `${q.lon.toFixed(6)},${q.lat.toFixed(6)}`;
+async function walkTable(p, pts) {
+  const j = await (await fetch(`${OSRM}/table/v1/foot/${[p, ...pts].map(lonlat).join(";")}?sources=0&annotations=distance,duration`)).json();
+  if (j.code !== "Ok") throw new Error(j.code);
+  return pts.map((_, k) => ({ m: j.distances[0][k + 1], s: j.durations[0][k + 1] }));
+}
+async function walkRoute(a, b) {
+  const j = await (await fetch(`${OSRM}/route/v1/foot/${lonlat(a)};${lonlat(b)}?overview=full&geometries=geojson`)).json();
+  if (j.code !== "Ok") throw new Error(j.code);
+  return j.routes[0].geometry.coordinates.map(([x, y]) => [y, x]);
+}
+
 function renderPlace(p) {
   place.p = p;
+  const seq = ++place.seq;
   if (place.map) { place.map.remove(); place.map = null; }
-  const near = D.stations.map((st) => {
+  // candidates by straight line, re-ranked by real walking distance once that arrives
+  const cands = D.stations.map((st) => {
     const best = st.exits.map((e, i) => ({ e, i, d: dist(p, e) })).sort((a, b) => a.d - b.d)[0] || null;
-    return { st, best, d: best ? best.d : dist(p, st) };
-  }).sort((a, b) => a.d - b.d).slice(0, 3);
+    return { st, best, d: best ? best.d : dist(p, st), min: walkMin(best ? best.d : dist(p, st)) };
+  }).sort((a, b) => a.d - b.d).slice(0, 5);
   const stopsNear = stops.map((s) => ({ s, d: dist(p, s) })).sort((a, b) => a.d - b.d).slice(0, 6);
-  const to = `?to=${p.lat.toFixed(6)},${p.lon.toFixed(6)}`;
   $("#aOut").innerHTML = `
     <div class="card">
       <div class="place-hd"><b>${esc(p.name)}</b>${p.sub ? `<br><span class="hint">${esc(p.sub)}</span>` : ""}</div>
       <div id="placeMap"></div>
-      <div class="links"><button class="btn primary" id="routeHere" type="button">Route hierher planen</button></div>
+      <div class="links"><button class="btn primary" id="routeHere" type="button">Route hierher planen</button>
+        ${!p.here && !isSaved(p) ? `<button class="btn" id="savePlace" type="button">☆ Ort speichern</button>` : ""}</div>
     </div>
     <h2>Nächste U-Bahn-Stationen</h2>
-    <ul class="list exits">${near.map(({ st, best, d }) => `
-      <li data-href="#/s/${st.diva}${to}">
-        <span class="num">${best ? best.i + 1 : "–"}</span>
-        <span class="info"><b>${esc(st.name)}</b> ${st.lines.map((l) => badge(l)).join(" ")}
-          <br><span class="meta">${best ? `Ausgang ${best.i + 1}: ${esc(best.e.name || "ohne Namen")}${exitMeta(best.e) ? " · " + exitMeta(best.e) : ""}` : "keine Ausgänge erfasst"}</span></span>
-        <span class="d">${fmtDist(d)}<br><span class="meta">${walkMin(d)} min</span></span>
-      </li>`).join("")}</ul>
-    <p class="hint">Luftlinie vom Ausgang zur Adresse. Tippe eine Station für den Stationsplan mit allen Ausgängen.</p>
+    <div id="aNear"></div>
     <h2>Alle Haltestellen in der Nähe</h2>
     <ul class="list">${stopsNear.map(({ s, d }) => stopItem(s, `${fmtDist(d)} · ${walkMin(d)} min`)).join("")}</ul>`;
   $("#routeHere").addEventListener("click", () => {
@@ -1256,16 +1419,52 @@ function renderPlace(p) {
     plan.auto = true;
     location.hash = "#/route";
   });
+  $("#savePlace")?.addEventListener("click", (e) => { if (savePlace(p)) e.currentTarget.remove(); });
   const map = place.map = baseMap("placeMap", [p.lat, p.lon], 16);
-  const pts = [[p.lat, p.lon]];
   L.marker([p.lat, p.lon], { icon: L.divIcon({ className: "", iconSize: [26, 26], iconAnchor: [13, 26], html: `<div class="mk dest" style="width:26px;height:26px"></div>` }), zIndexOffset: 1000 }).addTo(map).bindPopup(esc(p.name));
+  place.layer = L.layerGroup().addTo(map);
+  showNear(p, cands.slice(0, 3), false);
+  upgradeWalking(p, cands, seq).catch(() => { /* keep straight-line results */ });
+}
+async function upgradeWalking(p, cands, seq) {
+  const pts = cands.flatMap((c) => c.st.exits.map((e, i) => ({ c, e, i }))).slice(0, 80);
+  const w = await walkTable(p, pts.map((x) => x.e));
+  if (seq !== place.seq) return;
+  const near = cands.map((c) => {
+    let best = null;
+    pts.forEach((x, k) => { if (x.c === c && w[k].m != null && (!best || w[k].m < best.d)) best = { e: x.e, i: x.i, d: w[k].m, s: w[k].s }; });
+    return best ? { st: c.st, best, d: best.d, min: Math.max(1, Math.round(best.s / 60)) } : { ...c, d: c.d * 1.3 };
+  }).sort((a, b) => a.d - b.d).slice(0, 3);
+  showNear(p, near, true);
+  const routes = await Promise.all(near.map((n) => (n.best ? walkRoute(n.best.e, p).catch(() => null) : null)));
+  if (seq !== place.seq) return;
+  const css = getComputedStyle(document.documentElement);
+  routes.forEach((r, k) => {
+    if (r) L.polyline(r, k ? { color: css.getPropertyValue("--steps").trim(), weight: 4, dashArray: "2 7", opacity: .8 }
+      : { color: css.getPropertyValue("--focus").trim(), weight: 5, opacity: .9 }).addTo(place.layer);
+  });
+  if (routes[0]) place.map.fitBounds([[p.lat, p.lon], ...routes[0]], { padding: [32, 32], maxZoom: 18, animate: false });
+}
+function showNear(p, near, walking) {
+  const to = `?to=${p.lat.toFixed(6)},${p.lon.toFixed(6)}`;
+  $("#aNear").innerHTML = `<ul class="list exits">${near.map(({ st, best, d, min }) => `
+      <li data-href="#/s/${st.diva}${to}">
+        <span class="num">${best ? best.i + 1 : "–"}</span>
+        <span class="info"><b>${esc(st.name)}</b> ${st.lines.map((l) => badge(l)).join(" ")}
+          <br><span class="meta">${best ? `Ausgang ${best.i + 1}: ${esc(best.e.name || "ohne Namen")}${exitMeta(best.e) ? " · " + exitMeta(best.e) : ""}` : "keine Ausgänge erfasst"}</span>
+          ${best && exitLiftBroken(st, best.e) ? `<br><span class="warn">⚠ Aufzug bei diesem Ausgang außer Betrieb</span>` : ""}</span>
+        <span class="d">${fmtDist(d)}<br><span class="meta">${min} min</span></span>
+      </li>`).join("")}</ul>
+    <p class="hint">${walking ? "Fußweg vom Ausgang zur Adresse (blau auf der Karte)." : "Luftlinie vom Ausgang zur Adresse – Fußwege werden geladen …"} Tippe eine Station für den Stationsplan mit allen Ausgängen.</p>`;
+  place.layer.clearLayers();
+  const pts = [[p.lat, p.lon]];
   near.forEach(({ st, best }, k) => {
     if (!best) return;
-    L.marker([best.e.lat, best.e.lon], { icon: icon(`exit${k ? "" : " best"}`, best.i + 1, 30), zIndexOffset: 500 }).addTo(map)
+    L.marker([best.e.lat, best.e.lon], { icon: icon(`exit${k ? "" : " best"}`, best.i + 1, 30), zIndexOffset: 500 }).addTo(place.layer)
       .bindPopup(`<b>${esc(st.name)}</b><br>Ausgang ${best.i + 1}: ${esc(best.e.name || "")}`);
     if (best.d < 1500 || k === 0) pts.push([best.e.lat, best.e.lon]);
   });
-  if (pts.length > 1) map.fitBounds(pts, { padding: [32, 32], maxZoom: 18, animate: false });
+  if (pts.length > 1) place.map.fitBounds(pts, { padding: [32, 32], maxZoom: 18, animate: false });
 }
 document.addEventListener("click", (e) => {
   const li = e.target.closest("li[data-href]");
@@ -1275,6 +1474,7 @@ document.addEventListener("click", (e) => {
 // ---------- settings ---------------------------------------------------------------
 function openSettings() {
   $("#workerUrl").value = store.get("worker", "") || WORKER_URL;
+  renderPlacesEdit();
   $("#settings").showModal();
 }
 $("#settingsBtn").addEventListener("click", openSettings);
@@ -1291,7 +1491,7 @@ pA = picker($("#aQ"), $("#sA"), {
   here: true,
   onPick: async (p) => {
     remember(p);
-    try { renderPlace(await resolvePlace(p)); } catch (err) { $("#aOut").innerHTML = `<p class="hint">${esc(err.message)}</p>`; }
+    try { const [q] = await Promise.all([resolvePlace(p), loadFaults()]); renderPlace(q); } catch (err) { $("#aOut").innerHTML = `<p class="hint">${esc(err.message)}</p>`; }
   },
 });
 $("#swap").addEventListener("click", () => {
@@ -1306,6 +1506,7 @@ $("#pWhen").addEventListener("change", () => {
 });
 $("#pWc").checked = store.get("wc", false);
 $("#pGo").addEventListener("click", searchTrips);
+renderQuick();
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 

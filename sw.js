@@ -1,7 +1,7 @@
 // Service worker: makes the app installable and lets it open without network.
 // App files are network-first (updates show up on the next launch), the Leaflet
 // library is cache-first. Live departures and map tiles are never cached here.
-const CACHE = "oeffi-ausgang-v3";
+const CACHE = "oeffi-ausgang-v4";
 const APP = ["./", "index.html", "data.js", "manifest.webmanifest",
   "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png"];
 const LIBS = ["https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css",

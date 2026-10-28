@@ -21,6 +21,26 @@ Two planner views (buttons on the start page):
 - **Adresse → Ausgang** (`#/ort`): enter an address and get the three nearest
   U-Bahn stations with their best exit, plus all stops nearby.
 
+On top of that:
+
+- **Faults on the route**: lift/escalator outages and line disruptions
+  (`trafficInfoList`, one call for the whole network) are shown on the trip and
+  its summary. A lift that is out marks the exit next to it, and "stufenlos"
+  avoids that exit. Planned maintenance (with an `ausVon`/`ausBis` window) only
+  counts while it is on. Outages name lifts as `SL 03`, our data as `SL A03`;
+  `liftKey()` maps both to the same key.
+- **Saved places** ("Zuhause", "Arzt", …): "☆ Ziel speichern" in the planner or
+  "☆ Ort speichern" in the address view. They appear as one-tap buttons on the
+  start page ("Schnell hin") and first in every place list; delete them under ⚙.
+- **Where to board**: no open data says which car stops at which stairs, so
+  every U-Bahn ride has "vorne / Mitte / hinten" to note it once. It is stored
+  on the device per line, direction, stop and exit (or the U-line you change
+  to) and shown on every later trip that uses it.
+- **Walking routes** in the address view: exits are ranked by real walking
+  distance (OSRM foot server at routing.openstreetmap.de, CORS-enabled, no key)
+  and the walk is drawn on the map. Falls back to straight-line distance if the
+  server doesn't answer.
+
 Addresses come from the Stadt Wien address service (CORS-enabled, no key) with
 Photon (OpenStreetMap) as a fallback for shops and sights. `#/s/<diva>?to=lat,lon`
 opens a station map with the destination already marked.
@@ -64,6 +84,12 @@ Refresh the baked data (stations rarely change):
 ```sh
 python3 scripts/build-data.py   # stdlib only; Overpass can be slow, it retries
 ```
+
+A GitHub Action (`.github/workflows/refresh-data.yml`) does this on the 1st of
+every month and commits `data.js` only if the data changed. It refuses to commit
+when the result looks incomplete (fewer than 90 stations, or more than 10% fewer
+exits or stops than before), which happens when Overpass half-fails. Run it by
+hand under Actions → "Refresh station data" → Run workflow.
 
 Limits: no open dataset says which **train car** stops nearest which exit, so
 the app shows where exits are, not where to board. Floridsdorf has no exits
