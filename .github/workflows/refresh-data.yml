@@ -1,0 +1,51 @@
+# Monthly refresh of the baked station data (stops, exits, lifts, stairs).
+# Commits data.js only when the data itself changed; GitHub Pages redeploys.
+name: Refresh station data
+
+on:
+  schedule:
+    - cron: "17 4 1 * *"   # 1st of every month, 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build data.js
+        run: |
+          git show HEAD:data.js > /tmp/old.js
+          python3 scripts/build-data.py
+      - name: Sanity check and compare
+        id: cmp
+        run: |
+          python3 - <<'PY'
+          import json, os
+          def load(p):
+              s = open(p, encoding="utf-8").read()
+              return json.loads(s[s.index("{"):s.rindex("}") + 1])
+          old, new = load("/tmp/old.js"), load("data.js")
+          n_st = len(new["stations"]); n_ex = sum(len(s["exits"]) for s in new["stations"])
+          o_ex = sum(len(s["exits"]) for s in old["stations"])
+          print(f"stations {len(old['stations'])} -> {n_st}, exits {o_ex} -> {n_ex}, stops {len(old['stops'])} -> {len(new['stops'])}")
+          # a half-failed Overpass run must not wipe out exits
+          assert n_st >= 90 and n_ex >= 0.9 * o_ex and len(new["stops"]) >= 0.9 * len(old["stops"]), "data looks incomplete"
+          old.pop("generated"); new.pop("generated")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"changed={'true' if old != new else 'false'}\n")
+          PY
+      - name: Commit
+        if: steps.cmp.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data.js
+          git commit -m "Refresh station data ($(date -u +%F))"
+          git push
